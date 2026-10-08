@@ -255,13 +255,16 @@ function Settings.displayCount()
   return ok and n or 1
 end
 
-function Settings.display()
-  return math.min(Settings.values.display, Settings.displayCount())
+-- The monitor to use (clamped to the monitors that exist). `index` defaults to the saved setting.
+function Settings.display(index)
+  return math.max(1, math.min(index or Settings.values.display, Settings.displayCount()))
 end
 
--- Window sizes for the chosen display, largest last. Always contains the current setting.
-function Settings.resolutions()
-  local display = Settings.display()
+-- Window sizes for a display (default: the saved one), largest last.
+-- Always contains `current` (default: the saved resolution).
+function Settings.resolutions(displayIndex, current)
+  local display = Settings.display(displayIndex)
+  current = current or Settings.values.resolution
   local dw, dh = love.window.getDesktopDimensions(display)
   local seen, list = {}, {}
   local function add(w, h)
@@ -276,10 +279,10 @@ function Settings.resolutions()
   if ok and modes then
     for _, m in ipairs(modes) do add(m.width, m.height) end
   end
-  local cw, ch = Settings.parseResolution(Settings.values.resolution)
-  if cw and not seen[Settings.values.resolution] then
-    seen[Settings.values.resolution] = true
-    list[#list + 1] = { cw, ch, key = Settings.values.resolution }
+  local cw, ch = Settings.parseResolution(current)
+  if cw and not seen[current] then
+    seen[current] = true
+    list[#list + 1] = { cw, ch, key = current }
   end
   table.sort(list, function(a, b)
     if a[1] * a[2] ~= b[1] * b[2] then return a[1] * a[2] < b[1] * b[2] end
@@ -297,7 +300,20 @@ function Settings.applyEffects()
   fx.particleScale = Settings.PARTICLE_LEVELS[v.particles][2]
 end
 
+-- love.window.setMode can't run while a canvas is active (e.g. from a screen's draw, where
+-- the UI reacts to clicks). In that case the change is applied on the next Settings.update().
+Settings.windowPending = false
+
+function Settings.update()
+  if Settings.windowPending then Settings.applyWindow() end
+end
+
 function Settings.applyWindow()
+  if love.graphics.getCanvas() then
+    Settings.windowPending = true
+    return
+  end
+  Settings.windowPending = false
   local v = Settings.values
   local w, h = Settings.parseResolution(v.resolution)
   local display = Settings.display()
@@ -327,10 +343,6 @@ function Settings.applyWindow()
     flags.fullscreen = false
     pcall(love.window.setMode, 1280, 720, flags)
   end
-end
-
-function Settings.applyVsync()
-  if not pcall(love.window.setVSync, Settings.values.vsyncMode) then Settings.applyWindow() end
 end
 
 -- F11 / Alt+Enter: windowed <-> the last fullscreen mode used.

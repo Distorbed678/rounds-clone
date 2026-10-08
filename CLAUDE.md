@@ -51,6 +51,7 @@ The LÖVE runtimes and appimagetool are downloaded once into `build/cache/` (git
 - Every map needs 4 spawns (`spawns[1..4]`).
 - `fx.*` calls on the host are recorded into `fx.recorder` and replayed on clients. Keep fx calls deterministic in shape (`burst`, `ring`, `addShake`, `clear`).
 - Steam binaries (in `lib/`) must match an SDK version. Currently `luasteam.dll` / `luasteam.so` are **v6.0.0** (luasteam GitHub release, built for SDK 1.65). `steam_api64.dll` / `libsteam_api.so` are SDK **1.65**, taken from Steamworks.NET `com.rlabrecque.steamworks.net/Plugins/`. A mismatch shows up as "The specified procedure could not be found" (Windows) or an undefined-symbol error (Linux). Windows and Linux players can play together.
+- `love.window.setMode` fails while a canvas is active, and screens draw (and handle widget clicks) on `app.canvas`. Always change the window through `Settings.applyWindow()`: it defers to `Settings.update()` (called from `love.update`) when a canvas is active. In the settings screen, window mode, monitor, resolution and VSync are pending until **Apply**.
 - Settings are saved to `settings.txt` in the LÖVE save folder (flat `key=value`, plus `bind.<scheme>.<action>=key` and `card.<id>=<rarity>,<on|off>` lines). `Settings.resetBinds` mutates in place because input states hold references to the bind tables.
 
 ## Testing approach (headless, no Steam needed)

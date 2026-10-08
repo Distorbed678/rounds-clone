@@ -30,6 +30,7 @@ function love.update(dt)
   dt = math.min(dt, 1 / 30)
   steam.update()
   session.update()
+  Settings.update()
   app.update(dt)
 end
 

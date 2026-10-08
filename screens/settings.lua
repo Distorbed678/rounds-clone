@@ -13,7 +13,9 @@ Screen.__index = Screen
 local TABS = { "Video", "Controls", "Gameplay" }
 
 function Screen.new()
-  return setmetatable({ tab = 1, capture = nil }, Screen)
+  local s = setmetatable({ tab = 1, capture = nil }, Screen)
+  s:syncDisplay()
+  return s
 end
 
 local function cycle(i, n, d)
@@ -70,60 +72,89 @@ function Screen:mousepressed(x, y, button)
 end
 
 ---------------------------------------------------------------- video
+-- Display options are edited as pending values and only take effect on Apply.
+local DISPLAY_KEYS = { "windowMode", "display", "resolution", "vsyncMode" }
+
+function Screen:syncDisplay()
+  self.display = {}
+  for _, k in ipairs(DISPLAY_KEYS) do self.display[k] = Settings.values[k] end
+  self.displayEdited = false
+end
+
+function Screen:displayChanged()
+  if not self.displayEdited then return false end
+  for _, k in ipairs(DISPLAY_KEYS) do
+    if self.display[k] ~= Settings.values[k] then return true end
+  end
+  return false
+end
+
+function Screen:applyDisplay()
+  local v = Settings.values
+  for _, k in ipairs(DISPLAY_KEYS) do v[k] = self.display[k] end
+  if v.windowMode ~= "windowed" then v.lastFullscreen = v.windowMode end
+  Settings.applyWindow() -- runs on the next update, outside of drawing
+  Settings.save()
+  self.displayEdited = false
+end
+
 function Screen:drawVideo(x, y, w)
   local v = Settings.values
   local h, gap = 44, 52
   local colW = (w - 30) / 2
   local d
 
-  -- Display
+  -- Display (pending until Apply). Follow outside changes such as F11 while nothing is edited.
+  if not self.displayEdited then self:syncDisplay() end
+  local p = self.display
+  local function edited() self.displayEdited = true end
+
   local lx, ly = x, y
-  d = ui.cycler("Window mode", Settings.WINDOW_MODE_NAMES[v.windowMode], lx, ly, colW, h)
+  d = ui.cycler("Window mode", Settings.WINDOW_MODE_NAMES[p.windowMode], lx, ly, colW, h)
   if d ~= 0 then
     local modes = Settings.WINDOW_MODES
-    v.windowMode = modes[cycle(indexOf(modes, v.windowMode), #modes, d)]
-    if v.windowMode ~= "windowed" then v.lastFullscreen = v.windowMode end
-    Settings.applyWindow()
+    p.windowMode = modes[cycle(indexOf(modes, p.windowMode), #modes, d)]
+    edited()
   end
   ly = ly + gap
 
   local displays = Settings.displayCount()
-  local display = Settings.display()
+  local display = Settings.display(p.display)
   local ok, dname = pcall(love.window.getDisplayName, display)
   local dtext = tostring(display)
   if ok and dname and dname ~= "" then
-    if #dname > 16 then dname = dname:sub(1, 15) .. ".." end
+    if #dname > 13 then dname = dname:sub(1, 12) .. ".." end
     dtext = dtext .. ": " .. dname
   end
   d = ui.cycler("Monitor", dtext, lx, ly, colW, h)
   if d ~= 0 and displays > 1 then
-    v.display = cycle(display, displays, d)
-    Settings.applyWindow()
+    p.display = cycle(display, displays, d)
+    edited()
   end
   ly = ly + gap
 
-  local list = Settings.resolutions()
+  local list = Settings.resolutions(p.display, p.resolution)
   local current = 1
   for i, r in ipairs(list) do
-    if r.key == v.resolution then current = i end
+    if r.key == p.resolution then current = i end
   end
   local res = list[current]
-  local resText = v.windowMode == "borderless" and "Desktop" or (res[1] .. " x " .. res[2])
+  local resText = p.windowMode == "borderless" and "Desktop" or (res[1] .. " x " .. res[2])
   d = ui.cycler("Resolution", resText, lx, ly, colW, h)
-  if d ~= 0 and v.windowMode ~= "borderless" then
-    v.resolution = list[cycle(current, #list, d)].key
-    Settings.applyWindow()
+  if d ~= 0 and p.windowMode ~= "borderless" then
+    p.resolution = list[cycle(current, #list, d)].key
+    edited()
   end
   ly = ly + gap
 
   local vi = 1
   for i, m in ipairs(Settings.VSYNC_MODES) do
-    if m[2] == v.vsyncMode then vi = i end
+    if m[2] == p.vsyncMode then vi = i end
   end
   d = ui.cycler("VSync", Settings.VSYNC_MODES[vi][1], lx, ly, colW, h)
   if d ~= 0 then
-    v.vsyncMode = Settings.VSYNC_MODES[cycle(vi, #Settings.VSYNC_MODES, d)][2]
-    Settings.applyVsync()
+    p.vsyncMode = Settings.VSYNC_MODES[cycle(vi, #Settings.VSYNC_MODES, d)][2]
+    edited()
   end
   ly = ly + gap
 
@@ -131,6 +162,12 @@ function Screen:drawVideo(x, y, w)
   d = ui.cycler("Max FPS", v.maxFps == 0 and "Unlimited" or tostring(v.maxFps), lx, ly, colW, h)
   if d ~= 0 then v.maxFps = fpsOpts[cycle(indexOf(fpsOpts, v.maxFps), #fpsOpts, d)] end
   ly = ly + gap
+
+  local changed = self:displayChanged()
+  if ui.button(changed and "Apply Display Changes" or "No Display Changes", lx, ly, colW, h,
+    { disabled = not changed, color = changed and ui.ACCENT or nil }) then
+    self:applyDisplay()
+  end
 
   -- Graphics
   local rx, ry = x + colW + 30, y
@@ -170,7 +207,9 @@ function Screen:drawVideo(x, y, w)
 
   love.graphics.setFont(app.fonts.small)
   love.graphics.setColor(1, 1, 1, 0.45)
-  love.graphics.printf("F11 or Alt+Enter toggles fullscreen at any time.", x, y + 5 * gap + 16, w, "center")
+  love.graphics.printf("Window mode, monitor, resolution and VSync change when you press Apply " ..
+    "(unapplied changes are discarded on Back).\nF11 or Alt+Enter toggles fullscreen at any time.",
+    x, y + 6 * gap + 12, w, "center")
 end
 
 ---------------------------------------------------------------- controls
