@@ -9,6 +9,8 @@ local session = {
   hostId = nil,
   code = nil,
   rounds = 5,
+  pickFrom = 3,       -- host's gameplay rules, shown in the lobby
+  picks = 1,
   members = {},       -- { { id = string, raw = uint64, name = string }, ... }
   busy = false,
   status = nil,
@@ -19,7 +21,7 @@ local session = {
 }
 
 session.GAME_TAG = "rounds_love_clone"
-session.PROTOCOL = "1"
+session.PROTOCOL = "2"
 session.MAX_PLAYERS = 4
 
 local CODE_CHARS = "ABCDEFGHJKLMNPQRSTUVWXYZ23456789"
@@ -126,6 +128,8 @@ function session.refreshData()
   session.hostId = MM.GetLobbyData(L, "host")
   if session.hostId == "" then session.hostId = tostring(MM.GetLobbyOwner(L)) end
   session.rounds = tonumber(MM.GetLobbyData(L, "rounds")) or session.rounds
+  session.pickFrom = tonumber(MM.GetLobbyData(L, "pickfrom")) or session.pickFrom
+  session.picks = tonumber(MM.GetLobbyData(L, "picks")) or session.picks
 end
 
 local function enter(lobby, isHost)
@@ -142,7 +146,8 @@ local function enter(lobby, isHost)
 end
 
 ---------------------------------------------------------------- actions
-function session.host(rounds)
+-- rules: { pickFrom, picksPerRound } shown to people in the lobby.
+function session.host(rounds, rules)
   if not steam.available or session.busy then return end
   session.leave()
   session.busy = true
@@ -164,6 +169,7 @@ function session.host(rounds)
     MM.SetLobbyData(L, "host", steam.myId())
     MM.SetLobbyData(L, "rounds", tostring(rounds or 5))
     enter(L, true)
+    if rules then session.publishRules(rules) end
   end)
 end
 
@@ -248,6 +254,16 @@ function session.setRounds(n)
   session.rounds = n
   if session.isHost and session.lobby then
     S().Matchmaking.SetLobbyData(session.lobby, "rounds", tostring(n))
+  end
+end
+
+-- The host's card rules summary (the full rules are sent when the match starts).
+function session.publishRules(rules)
+  session.pickFrom, session.picks = rules.pickFrom, rules.picksPerRound
+  if session.isHost and session.lobby then
+    local MM = S().Matchmaking
+    MM.SetLobbyData(session.lobby, "pickfrom", tostring(rules.pickFrom))
+    MM.SetLobbyData(session.lobby, "picks", tostring(rules.picksPerRound))
   end
 end
 

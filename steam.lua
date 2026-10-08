@@ -1,11 +1,18 @@
 -- Loads luasteam and initializes Steam. Every failure is caught: if anything is
--- missing (Steam not running, DLLs absent, wrong OS) steam.available is false and
+-- missing (Steam not running, libraries absent, unsupported OS) steam.available is false and
 -- steam.error explains why, so the rest of the game keeps working offline.
 local steam = { available = false, Steam = nil, error = nil, tried = false }
 
 local APP_ID = "480" -- Spacewar, Valve's public test app
 
--- Folder holding luasteam.dll / steam_api64.dll.
+-- Steam libraries per OS: the Steamworks API library and the luasteam Lua module.
+local LIBS = {
+  Windows = { api = "steam_api64.dll", ext = "dll" },
+  Linux = { api = "libsteam_api.so", ext = "so" },
+}
+
+-- Folder holding the Steam libraries: the repo when run with `love .`,
+-- the executable's folder for a fused build (RoundsClone.exe / inside the AppImage).
 local function libDir()
   local src = love.filesystem.getSource()
   if love.filesystem.isFused() or src:match("%.love$") then
@@ -14,28 +21,39 @@ local function libDir()
   return src
 end
 
+-- Tell steam_api which app we are, without depending on the working directory.
+local function setAppId(ffi)
+  if ffi.os == "Windows" then
+    pcall(ffi.cdef, "int SetEnvironmentVariableA(const char* name, const char* value);")
+    ffi.C.SetEnvironmentVariableA("SteamAppId", APP_ID)
+    ffi.C.SetEnvironmentVariableA("SteamGameId", APP_ID)
+  else
+    pcall(ffi.cdef, "int setenv(const char* name, const char* value, int overwrite);")
+    ffi.C.setenv("SteamAppId", APP_ID, 1)
+    ffi.C.setenv("SteamGameId", APP_ID, 1)
+  end
+end
+
 function steam.init()
   if steam.tried then return steam.available end
   steam.tried = true
 
   local ok, err = pcall(function()
     local ffi = require "ffi"
-    if ffi.os ~= "Windows" then error("Online play is only set up for Windows") end
+    local libs = LIBS[ffi.os]
+    if not libs or ffi.arch ~= "x64" then error("Online play needs 64-bit Windows or Linux") end
     local dir = libDir()
+    setAppId(ffi)
 
-    -- Tell steam_api which app we are, without depending on the working directory.
-    pcall(ffi.cdef, "int SetEnvironmentVariableA(const char* name, const char* value);")
-    ffi.C.SetEnvironmentVariableA("SteamAppId", APP_ID)
-    ffi.C.SetEnvironmentVariableA("SteamGameId", APP_ID)
-
-    -- Load steam_api64.dll from our folder first so luasteam.dll's dependency resolves to it.
-    local okLib, lib = pcall(ffi.load, dir .. "/steam_api64.dll")
-    if not okLib then error("steam_api64.dll is missing from the game folder") end
+    -- Load the Steam API from our folder first (globally, on Linux) so luasteam's
+    -- dependency on it resolves to this copy.
+    local okLib, lib = pcall(ffi.load, dir .. "/" .. libs.api, true)
+    if not okLib then error(libs.api .. " is missing from the game folder") end
     steam.apiLib = lib -- keep a reference so it stays loaded
 
-    package.cpath = dir .. "/?.dll;" .. package.cpath
+    package.cpath = dir .. "/?." .. libs.ext .. ";" .. package.cpath
     local okReq, Steam = pcall(require, "luasteam")
-    if not okReq then error("luasteam.dll could not be loaded: " .. tostring(Steam)) end
+    if not okReq then error("luasteam." .. libs.ext .. " could not be loaded: " .. tostring(Steam)) end
     if not Steam.Init() then error("Steam is not running. Start Steam, log in, then restart the game.") end
     steam.Steam = Steam
   end)

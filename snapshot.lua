@@ -40,11 +40,22 @@ function Snap.encode(world, events)
   local P = {}
   local function add(fmt, ...) P[#P + 1] = pack("string", fmt, ...) end
 
-  local picking = 0
-  for _, i in ipairs(world:pendingPickers()) do picking = bit.bor(picking, bit.lshift(1, i - 1)) end
   local winner = world.roundWinner and world.roundWinner.slot or 0
-  add("<BfHBBBB", STATE_CODE[world.state] or 1, world.timer, u16(world.winScore), world.mapIndex or 1,
-    winner, picking, #world.players)
+  add("<BfHBBB", STATE_CODE[world.state] or 1, world.timer, u16(world.winScore), world.mapIndex or 1,
+    winner, #world.players)
+
+  -- The card pick in progress (slot 0 = none), so everyone can watch it.
+  local pk = world.state == "cardPick" and world.pick
+  if pk then
+    add("<BBBBB", pk.slot, pk.serial, pk.hover, pk.num, pk.total)
+    local queued = world:queuedPickers()
+    add("<B", #queued)
+    for _, slot in ipairs(queued) do add("<B", slot) end
+    add("<B", #pk.options)
+    for _, c in ipairs(pk.options) do add("<B", c.index) end
+  else
+    add("<BBBBBBB", 0, 0, 0, 0, 0, 0, 0)
+  end
 
   for _, p in ipairs(world.players) do
     local s = p.stats
@@ -118,8 +129,17 @@ function Snap.decode(data)
 
   local v = { players = {}, bullets = {}, wells = {}, fx = {} }
   local st, np, pos
-  st, v.timer, v.winScore, v.mapIndex, v.winner, v.picking, np, pos = unpack("<BfHBBBB", raw, 1)
+  st, v.timer, v.winScore, v.mapIndex, v.winner, np, pos = unpack("<BfHBBB", raw, 1)
   v.state = Snap.STATES[st] or "countdown"
+
+  -- pick = { slot, serial, hover, num, total, queued = { slot... }, options = { card index... } }
+  local pk = { queued = {}, options = {} }
+  local nq, no
+  pk.slot, pk.serial, pk.hover, pk.num, pk.total, nq, pos = unpack("<BBBBBB", raw, pos)
+  for i = 1, nq do pk.queued[i], pos = unpack("<B", raw, pos) end
+  no, pos = unpack("<B", raw, pos)
+  for i = 1, no do pk.options[i], pos = unpack("<B", raw, pos) end
+  v.pick = pk
 
   for i = 1, np do
     local p = {}

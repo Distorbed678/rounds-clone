@@ -14,6 +14,20 @@ function Menu:enter()
   love.mouse.setVisible(true)
 end
 
+-- One line per control scheme, built from the current key bindings.
+function Menu.controlsText()
+  local name = require("input").keyName
+  local b = Settings.values.binds
+  local function scheme(s)
+    return string.format("%s/%s/%s/%s, %s fire, %s block", name(s.left), name(s.up), name(s.down), name(s.right),
+      name(s.fire), name(s.block))
+  end
+  local o = b.online
+  return "Local:  P1 " .. scheme(b.p1) .. "   |   P2 " .. scheme(b.p2) .. "\n" ..
+    string.format("Online:  %s/%s move, %s or %s jump, %s fast-fall, mouse aim, %s fire, %s block   |   Esc: menu",
+      name(o.left), name(o.right), name(o.jump), name(o.jump2), name(o.down), name(o.fire), name(o.block))
+end
+
 function Menu:draw()
   local t = love.timer.getTime()
   -- Drifting background dots in the four player colours.
@@ -26,7 +40,7 @@ function Menu:draw()
     love.graphics.circle("fill", x, y, 18 + (i % 4) * 10)
   end
 
-  app.centered("ROUNDS", app.fonts.huge, 80)
+  app.centered("ROUNDS CLONE", app.fonts.huge, 80)
   app.centered("Lose a round, pick a card. Up to 4 players online.", app.fonts.med, 192, { 1, 1, 1, 0.55 })
 
   local w, h = 340, 58
@@ -51,10 +65,7 @@ function Menu:draw()
 
   love.graphics.setFont(app.fonts.small)
   love.graphics.setColor(1, 1, 1, 0.4)
-  love.graphics.printf(
-    "Local:  P1 WASD, Space fire, L-Shift block   |   P2 Arrows, R-Ctrl fire, R-Shift block\n" ..
-    "Online:  A/D move, Space or W jump, S fast-fall, mouse aim, Left click fire, Right click block   |   Esc: menu",
-    0, app.H - 56, app.W, "center")
+  love.graphics.printf(Menu.controlsText(), 0, app.H - 56, app.W, "center")
 end
 
 return Menu

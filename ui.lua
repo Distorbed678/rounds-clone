@@ -10,6 +10,7 @@ local ui = {
   key = nil,       -- "activate" | "left" | "right" | "backspace" | "paste"
   text = "",       -- typed characters this frame
   mouseMoved = false,
+  capturing = false, -- a screen is waiting for a key to bind: navigation keys go to it instead
 }
 
 ui.ACCENT = { 1, 0.55, 0.15 }
@@ -17,6 +18,7 @@ ui.ACCENT = { 1, 0.55, 0.15 }
 local function app() return require "app" end
 
 function ui.reset()
+  ui.capturing = false
   ui.focus = 1
   ui.click = nil
   ui.key = nil
@@ -37,6 +39,7 @@ function ui.endFrame()
 end
 
 function ui.keypressed(key)
+  if ui.capturing then return end
   local ctrl = love.keyboard.isDown("lctrl", "rctrl")
   if key == "up" or (key == "tab" and love.keyboard.isDown("lshift", "rshift")) then
     if ui.lastCount > 0 then ui.focus = (ui.focus - 2) % ui.lastCount + 1 end
@@ -52,6 +55,7 @@ function ui.keypressed(key)
 end
 
 function ui.mousepressed(x, y, button)
+  if ui.capturing then return end
   if button == 1 then ui.click = { x, y } end
 end
 

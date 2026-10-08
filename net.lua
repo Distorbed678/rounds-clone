@@ -12,8 +12,8 @@ net.MSG = {
   SNAPSHOT = 2, -- host -> clients, unreliable (see snapshot.lua)
   START = 3,    -- host -> clients: player slots, rounds to win
   ROSTER = 4,   -- host -> clients: everyone's cards
-  PICK = 5,     -- host -> one client: card options to choose from
-  CHOOSE = 6,   -- client -> host: chosen option
+  RULES = 5,    -- host -> clients: gameplay rules (cards offered, picks, rarities, disabled cards)
+  CHOOSE = 6,   -- client -> host: chosen option (the current pick itself travels in snapshots)
   TOAST = 7,    -- host -> clients: message banner
   TOLOBBY = 8,  -- host -> clients: return to the lobby
 }
@@ -34,12 +34,13 @@ function net.encodeInput(s, seq)
   local flags = bit.bor(
     s.left and 1 or 0, s.right and 2 or 0, s.down and 4 or 0,
     s.fire and 8 or 0, s.jumpHeld and 16 or 0)
-  return pack("string", "<BI4BfI4I4", M.INPUT, seq, flags, s.aim or 0, s.jumpCount, s.blockCount)
+  return pack("string", "<BI4BfI4I4B", M.INPUT, seq, flags, s.aim or 0, s.jumpCount, s.blockCount,
+    math.max(0, math.min(255, s.pickHover or 0)))
 end
 
 -- Returns the packet's sequence number.
 function net.decodeInput(data, s)
-  local _, seq, flags, aim, jc, bc = unpack("<BI4BfI4I4", data)
+  local _, seq, flags, aim, jc, bc, hover = unpack("<BI4BfI4I4B", data)
   s.left = bit.band(flags, 1) ~= 0
   s.right = bit.band(flags, 2) ~= 0
   s.down = bit.band(flags, 4) ~= 0
@@ -48,6 +49,7 @@ function net.decodeInput(data, s)
   s.aim = aim
   s.jumpCount = jc
   s.blockCount = bc
+  s.pickHover = hover
   return seq
 end
 
@@ -100,26 +102,50 @@ function net.decodeRoster(data)
 end
 
 ---------------------------------------------------------------- picks
-function net.encodePick(slot, options)
-  local ids = {}
-  for i, c in ipairs(options) do ids[i] = string.char(c.index) end
-  return pack("string", "<BBB", M.PICK, slot, #options) .. table.concat(ids)
+function net.encodeChoose(optionIndex, serial)
+  return pack("string", "<BBB", M.CHOOSE, optionIndex, serial or 0)
 end
 
-function net.decodePick(data)
-  local _, slot, n, pos = unpack("<BBB", data)
-  local ids = {}
-  for i = 1, n do ids[i] = data:byte(pos + i - 1) end
-  return slot, ids
-end
-
-function net.encodeChoose(optionIndex)
-  return pack("string", "<BB", M.CHOOSE, optionIndex)
-end
-
+-- Returns optionIndex, serial.
 function net.decodeChoose(data)
-  local _, idx = unpack("<BB", data)
-  return idx
+  local _, idx, serial = unpack("<BBB", data)
+  return idx, serial
+end
+
+---------------------------------------------------------------- rules
+-- rules: see Cards.applyRules. Card overrides are one byte per card:
+-- rarity index (1-5), +128 when the card is disabled.
+function net.encodeRules(rules, cards, rarities)
+  local rarityIndex = {}
+  for i, r in ipairs(rarities) do rarityIndex[r.id] = i end
+  local parts = { pack("string", "<BBB", M.RULES, rules.pickFrom, rules.picksPerRound), string.char(#rarities) }
+  for i = 1, #rarities do
+    parts[#parts + 1] = pack("string", "<H", math.max(0, math.min(65535, rules.weights[i] or 0)))
+  end
+  parts[#parts + 1] = pack("string", "<H", #cards)
+  for _, c in ipairs(cards) do
+    local b = rarityIndex[rules.rarity[c.index] or c.baseRarity] or 1
+    if rules.disabled[c.index] then b = b + 128 end
+    parts[#parts + 1] = string.char(b)
+  end
+  return table.concat(parts)
+end
+
+function net.decodeRules(data, rarities)
+  local _, pickFrom, picks, nr, pos = unpack("<BBBB", data)
+  local rules = { pickFrom = pickFrom, picksPerRound = picks, weights = {}, rarity = {}, disabled = {} }
+  for i = 1, nr do
+    rules.weights[i], pos = unpack("<H", data, pos)
+  end
+  local nc
+  nc, pos = unpack("<H", data, pos)
+  for i = 1, nc do
+    local b = data:byte(pos + i - 1)
+    local r = rarities[b % 128]
+    rules.rarity[i] = r and r.id
+    rules.disabled[i] = b >= 128 or nil
+  end
+  return rules
 end
 
 ---------------------------------------------------------------- misc

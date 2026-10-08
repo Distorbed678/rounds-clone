@@ -1,7 +1,7 @@
 function love.conf(t)
   t.identity = "rounds_clone"
   t.version = "11.4"
-  t.window.title = "ROUNDS"
+  t.window.title = "Rounds Clone"
   t.window.width = 1280
   t.window.height = 720
   t.window.resizable = true

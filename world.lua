@@ -24,13 +24,17 @@ function World.toastColor(code)
 end
 
 -- defs: list of { name = string, input = input state, peer = optional network id }
-function World.new(defs, winScore)
+-- rules: gameplay rules (see Cards.applyRules); defaults to Cards.rules.
+function World.new(defs, winScore, rules)
   local w = setmetatable({
     players = {}, bullets = {}, pending = {}, wells = {},
     state = "countdown", timer = 0,
     winScore = winScore,
     startScore = winScore,
-    picks = {},
+    rules = rules or Cards.rules,
+    pick = nil,       -- the card pick in progress: { slot, options, hover, num, total, serial }
+    pickQueue = {},   -- upcoming picks: { slot, num, total }
+    pickSerial = 0,   -- bumped on every new hand (u8), so stale choices can be ignored
     on = {},
   }, World)
   for i, d in ipairs(defs) do
@@ -91,7 +95,8 @@ function World:startRound()
       p.hp = 0
     end
   end
-  self.picks = {}
+  self.pick = nil
+  self.pickQueue = {}
   self.roundWinner = nil
   self.state = "countdown"
   self.timer = 2.4
@@ -159,42 +164,83 @@ function World:afterRound()
   end
 end
 
--- Every connected player except the round winner picks a card. A draw skips picks.
+-- Every connected player except the round winner picks cards, one player at a
+-- time: lowest score first (ties by slot), each making all their picks in a row.
+-- A draw skips picks.
 function World:openPicks()
   if not self.roundWinner then return self:startRound() end
-  self.picks = {}
-  local any = false
-  for i, p in ipairs(self.players) do
-    if p ~= self.roundWinner and not p.disconnected then
-      self.picks[i] = { options = Cards.deal(3, p), done = false }
-      any = true
+  local pickers = {}
+  for _, p in ipairs(self.players) do
+    if p ~= self.roundWinner and not p.disconnected then pickers[#pickers + 1] = p end
+  end
+  table.sort(pickers, function(a, b)
+    if a.score ~= b.score then return a.score < b.score end
+    return a.slot < b.slot
+  end)
+  local total = math.max(1, self.rules.picksPerRound or 1)
+  self.pickQueue = {}
+  for _, p in ipairs(pickers) do
+    for num = 1, total do
+      self.pickQueue[#self.pickQueue + 1] = { slot = p.slot, num = num, total = total }
     end
   end
-  if not any then return self:startRound() end
   self.state = "cardPick"
-  for i, pk in pairs(self.picks) do self:emit("pick", i, pk.options) end
+  self:nextPick()
 end
 
-function World:pendingPickers()
-  local list = {}
-  for i = 1, #self.players do
-    local pk = self.picks[i]
-    if pk and not pk.done then list[#list + 1] = i end
+function World:dealPick(slot, num, total)
+  local options = Cards.deal(self.rules.pickFrom or 3, self.players[slot])
+  if #options == 0 then return false end
+  self.pickSerial = (self.pickSerial + 1) % 256
+  self.pick = {
+    slot = slot, options = options, hover = math.ceil(#options / 2),
+    num = num, total = total, serial = self.pickSerial,
+  }
+  self:emit("pick", slot, options)
+  return true
+end
+
+-- Hand the next queued pick out, or start the next round when nobody is left.
+function World:nextPick()
+  self.pick = nil
+  while #self.pickQueue > 0 do
+    local q = table.remove(self.pickQueue, 1)
+    if not self.players[q.slot].disconnected and self:dealPick(q.slot, q.num, q.total) then return end
+  end
+  self:startRound()
+end
+
+-- Slots still waiting for their turn (not counting the current picker).
+function World:queuedPickers()
+  local list, seen = {}, {}
+  if self.pick then seen[self.pick.slot] = true end
+  for _, q in ipairs(self.pickQueue) do
+    if not seen[q.slot] then
+      seen[q.slot] = true
+      list[#list + 1] = q.slot
+    end
   end
   return list
 end
 
-function World:choose(slot, optionIndex)
+-- The current picker moved their selection (shown to everyone).
+function World:hover(slot, index)
+  local pk = self.pick
+  if self.state == "cardPick" and pk and pk.slot == slot and pk.options[index] then pk.hover = index end
+end
+
+-- serial: optional; a choice made for an older hand is ignored.
+function World:choose(slot, optionIndex, serial)
   if self.state ~= "cardPick" then return end
-  local pk = self.picks[slot]
-  if not pk or pk.done then return end
+  local pk = self.pick
+  if not pk or pk.slot ~= slot then return end
+  if serial and serial ~= pk.serial then return end
   local card = pk.options[optionIndex]
   if not card then return end
   local p = self.players[slot]
 
   if card.special == "reroll" then
-    pk.options = Cards.deal(3, p)
-    self:emit("pick", slot, pk.options)
+    if not self:dealPick(slot, pk.num, pk.total) then self:nextPick() end
     return
   elseif card.special == "tableflip" then
     self:toast(Cards.tableFlip(p), slot)
@@ -203,9 +249,13 @@ function World:choose(slot, optionIndex)
   else
     p:addCard(card)
   end
-  pk.done = true
   self:emit("roster")
-  if #self:pendingPickers() == 0 then self:startRound() end
+  self:nextPick()
+end
+
+-- New gameplay rules (from the settings), used from the next deal on.
+function World:setRules(rules)
+  self.rules = rules
 end
 
 function World:continueMatch()
@@ -236,8 +286,10 @@ function World:disconnect(slot)
     p.dead = true
     p.hp = 0
   end
-  if self.picks[slot] then self.picks[slot].done = true end
-  if self.state == "cardPick" and #self:pendingPickers() == 0 then self:startRound() end
+  for i = #self.pickQueue, 1, -1 do
+    if self.pickQueue[i].slot == slot then table.remove(self.pickQueue, i) end
+  end
+  if self.state == "cardPick" and self.pick and self.pick.slot == slot then self:nextPick() end
 end
 
 return World

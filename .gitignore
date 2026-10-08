@@ -1,6 +1,7 @@
 # Build outputs
 *.love
 dist/
+build/
 
 # Local editor / tool state
 .vscode/

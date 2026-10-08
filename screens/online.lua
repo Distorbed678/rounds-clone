@@ -50,7 +50,7 @@ function Online:draw()
 
   local busy = session.busy
   if ui.button("Host Lobby", x, 225, w, 58, { disabled = busy }) then
-    session.host(Settings.values.roundsToWin)
+    session.host(Settings.values.roundsToWin, Settings.values)
   end
 
   app.centered("or join with a lobby code", app.fonts.med, 315, { 1, 1, 1, 0.6 })

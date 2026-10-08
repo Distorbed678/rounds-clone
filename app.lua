@@ -132,6 +132,10 @@ function app.mousereleased(x, y, button)
   forward("mousereleased", (x - app.ox) / app.scale, (y - app.oy) / app.scale, button)
 end
 
+function app.wheelmoved(x, y)
+  forward("wheelmoved", x, y)
+end
+
 function app.mousemoved()
   ui.mouseMoved = true
 end

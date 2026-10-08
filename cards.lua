@@ -192,7 +192,7 @@ Cards.list = {
   },
   {
     name = "Reroll", rarity = "uncommon", special = "reroll",
-    lines = { "Reroll these three cards" },
+    lines = { "Reroll these cards" },
   },
 
   ---------------------------------------------------------------- Rare
@@ -308,47 +308,93 @@ Cards.list = {
   },
 }
 
--- Stable index per card, used to reference cards over the network.
-for i, c in ipairs(Cards.list) do c.index = i end
-
-local function rollRarity()
-  local total = 0
-  for _, r in ipairs(Cards.RARITIES) do total = total + r.weight end
-  local x = love.math.random() * total
-  for _, r in ipairs(Cards.RARITIES) do
-    x = x - r.weight
-    if x <= 0 then return r.id end
-  end
-  return "common"
+-- Stable index per card, used to reference cards over the network, plus a
+-- name-based id used in the settings file.
+Cards.byId = {}
+for i, c in ipairs(Cards.list) do
+  c.index = i
+  c.id = c.name:lower():gsub("[^%w]+", "_")
+  c.baseRarity = c.rarity
+  Cards.byId[c.id] = c
 end
 
--- Deal n distinct cards, rolling a rarity for each slot.
+Cards.DEFAULT_RULES = { pickFrom = 3, picksPerRound = 1, weights = {}, rarity = {}, disabled = {} }
+for i, r in ipairs(Cards.RARITIES) do Cards.DEFAULT_RULES.weights[i] = r.weight end
+Cards.rules = Cards.DEFAULT_RULES
+
+-- Gameplay rules: { pickFrom, picksPerRound, weights = { per RARITIES index },
+-- rarity = { [card index] = rarity id }, disabled = { [card index] = true } }.
+-- Sets each card's current rarity / disabled flag (also used when drawing cards).
+function Cards.applyRules(rules)
+  Cards.rules = rules
+  for _, c in ipairs(Cards.list) do
+    local r = rules.rarity[c.index]
+    c.rarity = (r and Cards.rarity[r]) and r or c.baseRarity
+    c.disabled = rules.disabled[c.index] and true or nil
+  end
+end
+
+-- Can this card be offered to the player right now?
 -- Table Flip / Shrine are only offered to a player who already owns cards.
+local function offerable(c, player, used)
+  if c.disabled or used[c] then return false end
+  if c.special and c.special ~= "reroll" and #player.cards == 0 then return false end
+  return true
+end
+
+-- Deal up to n distinct cards, rolling a rarity for each slot. Only rarities that
+-- still have cards to offer take part in the roll; rarities with zero chance are
+-- skipped unless nothing else is left. May return fewer than n cards (even none).
 function Cards.deal(n, player)
+  local weights = Cards.rules.weights
   local hand, used = {}, {}
-  local attempts = 0
-  while #hand < n and attempts < 500 do
-    attempts = attempts + 1
-    local rarity = rollRarity()
-    local pool = {}
-    for _, c in ipairs(Cards.list) do
-      local useless = c.special and c.special ~= "reroll" and #player.cards == 0
-      if c.rarity == rarity and not used[c] and not useless then pool[#pool + 1] = c end
+  while #hand < n do
+    local pools, total, any = {}, 0, false
+    for i, r in ipairs(Cards.RARITIES) do
+      local pool = {}
+      for _, c in ipairs(Cards.list) do
+        if c.rarity == r.id and offerable(c, player, used) then pool[#pool + 1] = c end
+      end
+      if #pool > 0 then
+        pools[i] = pool
+        any = true
+        total = total + math.max(0, weights[i] or 0)
+      end
     end
-    if #pool > 0 then
-      local c = pool[love.math.random(#pool)]
-      used[c] = true
-      hand[#hand + 1] = c
+    if not any then break end
+
+    local pick
+    if total > 0 then
+      local x = love.math.random() * total
+      for i in ipairs(Cards.RARITIES) do
+        local w = pools[i] and math.max(0, weights[i] or 0) or 0
+        if w > 0 then
+          pick = i
+          x = x - w
+          if x <= 0 then break end
+        end
+      end
+    else
+      local options = {}
+      for i in ipairs(Cards.RARITIES) do
+        if pools[i] then options[#options + 1] = i end
+      end
+      pick = options[love.math.random(#options)]
     end
+
+    local pool = pools[pick]
+    local c = pool[love.math.random(#pool)]
+    used[c] = true
+    hand[#hand + 1] = c
   end
   return hand
 end
 
--- A random keepable (non-special) card of the given rarity, preferring one other than `exclude`.
+-- A random keepable (non-special, enabled) card of the given rarity, preferring one other than `exclude`.
 function Cards.randomOfRarity(rarity, exclude)
   local pool = {}
   for _, c in ipairs(Cards.list) do
-    if c.rarity == rarity and not c.special and c ~= exclude then pool[#pool + 1] = c end
+    if c.rarity == rarity and not c.special and not c.disabled and c ~= exclude then pool[#pool + 1] = c end
   end
   if #pool == 0 then return exclude end
   return pool[love.math.random(#pool)]

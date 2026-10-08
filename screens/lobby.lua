@@ -81,6 +81,12 @@ function Lobby:update(dt)
   self.copied = math.max(0, self.copied - dt)
 end
 
+-- "First to 5  -  pick 1 of 3 cards" (the host's rules, from the lobby data).
+function Lobby.rulesText()
+  local picks = session.picks > 1 and (session.picks .. " picks of ") or "pick 1 of "
+  return "First to " .. session.rounds .. "  -  " .. picks .. session.pickFrom .. " cards"
+end
+
 function Lobby:draw()
   app.centered("LOBBY", app.fonts.big, 28)
 
@@ -177,10 +183,11 @@ function Lobby:draw()
   else
     love.graphics.setFont(app.fonts.title)
     love.graphics.setColor(1, 1, 1, 0.7)
-    love.graphics.printf("First to " .. session.rounds .. "  -  waiting for the host to start...", 0, by + 10, app.W, "center")
+    love.graphics.printf(Lobby.rulesText() .. "  -  waiting for the host to start...", 0, by + 10, app.W, "center")
   end
 
-  if ui.button("Leave Lobby", app.W / 2 - 150, 570, 300, 46) then toMenu() end
+  if ui.button("Leave Lobby", app.W / 2 - 310, 570, 300, 46) then toMenu() end
+  if ui.button("Settings", app.W / 2 + 10, 570, 300, 46) then app.push(require("screens.settings").new()) end
 
   love.graphics.setFont(app.fonts.small)
   love.graphics.setColor(1, 1, 1, 0.4)

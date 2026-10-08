@@ -16,33 +16,39 @@ local net = require "net"
 local Snap = require "snapshot"
 local hud = require "hud"
 local session = require "session"
+local Settings = require "settings"
 
 local Match = {}
 Match.__index = Match
 
 local SNAPSHOT_INTERVAL = 1 / 30
-local LOCAL_HINTS = {
-  "A / D to choose, SPACE to take",
-  "LEFT / RIGHT to choose, RIGHT CTRL to take",
-}
+local PICK_DELAY = 0.4 -- ignore "take" presses right after a hand appears
 
 local function newMatch(role)
   return setmetatable({
     role = role,
     paused = false,
     toasts = {},
-    picks = {},     -- slot -> { options, index, delay, waiting } for pickers on this machine
+    pickUI = nil,   -- { slot, serial, index, delay, waiting } while this machine controls the pick
   }, Match)
+end
+
+-- Gameplay rules from this machine's settings (local play and the online host).
+local function settingsRules()
+  local rules = Settings.cardRules()
+  Cards.applyRules(rules)
+  return rules
 end
 
 ---------------------------------------------------------------- construction
 function Match.newLocal(winScore)
   local m = newMatch("local")
-  m.inputs = { Input.keys(Input.LOCAL_CONTROLS[1]), Input.keys(Input.LOCAL_CONTROLS[2]) }
+  local binds = Settings.values.binds
+  m.inputs = { Input.keys(binds.p1), Input.keys(binds.p2) }
   m.world = World.new({
     { name = "Player 1", input = m.inputs[1] },
     { name = "Player 2", input = m.inputs[2] },
-  }, winScore)
+  }, winScore, settingsRules())
   m:hookWorld()
   fx.recorder = nil
   m.world:startRound()
@@ -55,7 +61,7 @@ function Match.newHost(slots, winScore, transport, opts)
   local m = newMatch("host")
   m.transport = transport
   m.popEvents = opts.popEvents or session.popEvents
-  m.myInput = Input.mouse()
+  m.myInput = Input.mouse(Settings.values.binds.online)
   m.mySlot = 1
   m.peers = {}
   local defs = {}
@@ -64,8 +70,9 @@ function Match.newHost(slots, winScore, transport, opts)
     defs[i] = { name = s.name, input = input, peer = s.peer }
     if i > 1 then m.peers[s.peer] = { slot = i, seq = -1 } end
   end
-  m.world = World.new(defs, winScore)
+  m.world = World.new(defs, winScore, settingsRules())
   m:hookWorld()
+  m:broadcastRules()
   m.snapTimer = 0
   fx.recorder = {}
   m.world:startRound()
@@ -79,10 +86,11 @@ function Match.newClient(slots, mySlot, winScore, transport, hostPeer, pending, 
   m.popEvents = opts.popEvents or session.popEvents
   m.hostPeer = hostPeer
   m.mySlot = mySlot
-  m.myInput = Input.mouse()
+  m.myInput = Input.mouse(Settings.values.binds.online)
   m.inputSeq = 0
   m.pending = pending
-  m.view = { state = "countdown", timer = 0, winScore = winScore, mapIndex = 1, winner = 0, picking = 0 }
+  m.view = { state = "countdown", timer = 0, winScore = winScore, mapIndex = 1, winner = 0,
+    pick = { slot = 0, queued = {}, options = {} } }
   m.proxies = {}
   for i, s in ipairs(slots) do m.proxies[i] = m:newProxy(i, s.name) end
   m.bulletViews, m.bulletList, m.wellList = {}, {}, {}
@@ -120,13 +128,6 @@ function Match:hookWorld()
   w.on.roster = function()
     if self.role == "host" then self:broadcast(net.encodeRoster(w.players), true) end
   end
-  w.on.pick = function(slot, options)
-    if self.role == "local" or slot == self.mySlot then
-      self.picks[slot] = { options = options, index = 2, delay = 0.4 }
-    else
-      self.transport:send(w.players[slot].peer, net.encodePick(slot, options), true)
-    end
-  end
   w.on.matchOver = function() ui.reset() end
 end
 
@@ -142,50 +143,94 @@ end
 function Match:status()
   if self.role == "client" then
     local v = self.view
-    local pickers = {}
-    for i = 1, #self.proxies do
-      if math.floor(v.picking / 2 ^ (i - 1)) % 2 == 1 then pickers[#pickers + 1] = i end
-    end
     return {
       state = v.state, timer = v.timer, winScore = v.winScore,
-      winner = v.winner > 0 and self.proxies[v.winner] or nil, pickers = pickers,
+      winner = v.winner > 0 and self.proxies[v.winner] or nil, pick = self:currentPick(),
     }
   end
   local w = self.world
-  return { state = w.state, timer = w.timer, winScore = w.winScore, winner = w.roundWinner, pickers = w:pendingPickers() }
+  return { state = w.state, timer = w.timer, winScore = w.winScore, winner = w.roundWinner, pick = self:currentPick() }
 end
 
 function Match:players()
   return self.role == "client" and self.proxies or self.world.players
 end
 
--- The pick shown on this machine (local: lowest pending slot; online: our own).
-function Match:activePick()
-  if self.role == "local" then
-    for slot = 1, 4 do
-      if self.picks[slot] then return self.picks[slot], slot end
-    end
-    return nil
-  end
-  return self.picks[self.mySlot], self.mySlot
-end
-
-function Match:choosePick(slot, index)
-  local pk = self.picks[slot]
-  if not pk or pk.delay > 0 or pk.waiting then return end
+---------------------------------------------------------------- card picks
+-- The pick in progress, for any role:
+-- { slot, serial, hover, num, total, queued = { slot... }, options = { card... } } or nil.
+function Match:currentPick()
   if self.role == "client" then
-    pk.waiting = true
-    self.transport:send(self.hostPeer, net.encodeChoose(index), true)
+    local pk = self.view.pick
+    if self.view.state ~= "cardPick" or pk.slot == 0 then return nil end
+    local options = {}
+    for i, idx in ipairs(pk.options) do options[i] = Cards.list[idx] end
+    return {
+      slot = pk.slot, serial = pk.serial, hover = pk.hover, num = pk.num, total = pk.total,
+      queued = pk.queued, options = options,
+    }
+  end
+  local w = self.world
+  local pk = w.pick
+  if w.state ~= "cardPick" or not pk then return nil end
+  return {
+    slot = pk.slot, serial = pk.serial, hover = pk.hover, num = pk.num, total = pk.total,
+    queued = w:queuedPickers(), options = pk.options,
+  }
+end
+
+-- Does this machine make the choice for that slot?
+function Match:controlsPick(slot)
+  if self.role == "local" then return true end
+  return slot == self.mySlot
+end
+
+-- Keep pickUI in step with the current pick and share our hover with everyone.
+function Match:syncPick(dt)
+  local cp = self:currentPick()
+  if not cp or not self:controlsPick(cp.slot) then
+    self.pickUI = nil
+    if self.myInput then self.myInput.pickHover = 0 end
+    return
+  end
+  local pu = self.pickUI
+  if not pu or pu.serial ~= cp.serial or pu.slot ~= cp.slot then
+    pu = { slot = cp.slot, serial = cp.serial, index = math.max(1, math.min(#cp.options, cp.hover)),
+      delay = PICK_DELAY, waiting = false }
+    self.pickUI = pu
+  end
+  pu.delay = math.max(0, pu.delay - dt)
+  pu.index = math.max(1, math.min(#cp.options, pu.index))
+  if self.role == "client" then
+    self.myInput.pickHover = pu.index
   else
-    self.picks[slot] = nil
-    self.world:choose(slot, index) -- a Reroll re-deals through w.on.pick
+    self.world:hover(pu.slot, pu.index)
   end
 end
 
-function Match:prunePicks()
-  for slot in pairs(self.picks) do
-    local wp = self.world.picks[slot]
-    if not wp or wp.done or self.world.state ~= "cardPick" then self.picks[slot] = nil end
+function Match:choosePick(index)
+  local pu = self.pickUI
+  if not pu or pu.delay > 0 or pu.waiting then return end
+  pu.index = index
+  if self.role == "client" then
+    pu.waiting = true
+    self.transport:send(self.hostPeer, net.encodeChoose(index, pu.serial), true)
+  else
+    self.world:choose(pu.slot, index, pu.serial) -- the next hand (if any) is picked up by syncPick
+    self.pickUI = nil
+  end
+end
+
+-- Host / local: re-read the gameplay rules from the settings (used for New Match).
+function Match:newMatch()
+  self.world:setRules(settingsRules())
+  self:broadcastRules()
+  self.world:newMatch()
+end
+
+function Match:broadcastRules()
+  if self.role == "host" then
+    self:broadcast(net.encodeRules(self.world.rules, Cards.list, Cards.RARITIES), true)
   end
 end
 
@@ -207,7 +252,7 @@ function Match:applySnapshot(v)
   local now = love.timer.getTime()
   local view = self.view
   view.state, view.timer, view.winScore = v.state, v.timer, v.winScore
-  view.mapIndex, view.winner, view.picking = v.mapIndex, v.winner, v.picking
+  view.mapIndex, view.winner, view.pick = v.mapIndex, v.winner, v.pick
 
   for i, pv in ipairs(v.players) do
     local p = self.proxies[i]
@@ -285,8 +330,6 @@ function Match:applySnapshot(v)
     end
   end
 
-  -- Our pick is finished once the host no longer lists us as picking.
-  if math.floor(v.picking / 2 ^ (self.mySlot - 1)) % 2 == 0 then self.picks[self.mySlot] = nil end
   self.snapTime = now
 end
 
@@ -332,13 +375,8 @@ function Match:clientNetwork()
             for k, idx in ipairs(r.cards) do p.cards[k] = Cards.list[idx] end
           end
         end
-      elseif kind == net.MSG.PICK then
-        local slot, ids = net.decodePick(msg.data)
-        if slot == self.mySlot then
-          local options = {}
-          for k, idx in ipairs(ids) do options[k] = Cards.list[idx] end
-          self.picks[slot] = { options = options, index = 2, delay = 0.3 }
-        end
+      elseif kind == net.MSG.RULES then
+        Cards.applyRules(net.decodeRules(msg.data, Cards.RARITIES))
       elseif kind == net.MSG.TOAST then
         self:showToast(net.decodeToast(msg.data))
       elseif kind == net.MSG.TOLOBBY then
@@ -373,9 +411,11 @@ function Match:hostNetwork(dt)
           for _, k in ipairs({ "left", "right", "down", "fire", "jumpHeld", "aim", "jumpCount", "blockCount" }) do
             inp[k] = scratch[k]
           end
+          if scratch.pickHover > 0 then self.world:hover(info.slot, scratch.pickHover) end
         end
       elseif kind == net.MSG.CHOOSE then
-        self.world:choose(info.slot, net.decodeChoose(msg.data))
+        local index, serial = net.decodeChoose(msg.data)
+        self.world:choose(info.slot, index, serial)
       end
     end
   end
@@ -421,24 +461,24 @@ function Match:update(dt, isTop)
     t.t = t.t - dt
     if t.t <= 0 then table.remove(self.toasts, i) end
   end
-  for _, pk in pairs(self.picks) do pk.delay = math.max(0, pk.delay - dt) end
 
   local mx, my = app.mouse()
   if self.role == "local" then
     for _, inp in ipairs(self.inputs) do Input.poll(inp, suppressed) end
     if not self.paused then self.world:update(dt) end
-    self:prunePicks()
+    self:syncPick(dt)
   elseif self.role == "host" then
     local me = self.world.players[1]
     Input.poll(self.myInput, suppressed, me.x, me.y, mx, my)
     self.world:update(dt)
-    self:prunePicks()
+    self:syncPick(dt)
     self:hostNetwork(dt)
   else
     self:clientNetwork()
     if self.closed then return end -- switched to the lobby/menu
     local me = self.proxies[self.mySlot]
     Input.poll(self.myInput, suppressed, me.x, me.y, mx, my)
+    self:syncPick(dt)
     self.inputSeq = self.inputSeq + 1
     self.transport:send(self.hostPeer, net.encodeInput(self.myInput, self.inputSeq), false)
     self:clientInterpolate(dt)
@@ -460,40 +500,61 @@ function Match:keypressed(key)
   end
   if self.paused then return end
 
-  local pk, slot = self:activePick()
-  if pk then
-    local keys = self.role == "local" and Input.LOCAL_CONTROLS[slot] or { left = "a", right = "d", fire = "space" }
-    local n = #pk.options
-    if key == keys.left or (self.role ~= "local" and key == "left") then
-      pk.index = (pk.index - 2) % n + 1
-    elseif key == keys.right or (self.role ~= "local" and key == "right") then
-      pk.index = pk.index % n + 1
-    elseif key == keys.fire or (self.role ~= "local" and key == "return") then
-      self:choosePick(slot, pk.index)
+  local pu = self.pickUI
+  if pu then
+    local cp = self:currentPick()
+    local n = cp and #cp.options or 0
+    if n == 0 then return end
+    local left, right, take = self:pickKeys(pu.slot)
+    if left[key] then
+      pu.index = (pu.index - 2) % n + 1
+    elseif right[key] then
+      pu.index = pu.index % n + 1
+    elseif take[key] then
+      self:choosePick(pu.index)
     end
     return
   end
 
   if self.role == "local" then
     for _, inp in ipairs(self.inputs) do Input.keypressed(inp, key) end
-    if key == "r" and self.world.state == "matchOver" then self.world:newMatch() end
+    if key == "r" and self.world.state == "matchOver" then self:newMatch() end
   else
     Input.keypressed(self.myInput, key)
   end
 end
 
+-- Key sets (as lookup tables) for moving the pick selection left / right and taking a card.
+function Match:pickKeys(slot)
+  local function set(...)
+    local t = {}
+    for _, k in ipairs({ ... }) do t[k] = true end
+    return t
+  end
+  if self.role == "local" then
+    local b = Settings.values.binds["p" .. slot] or Settings.values.binds.p1
+    return set(b.left), set(b.right), set(b.fire)
+  end
+  local b = Settings.values.binds.online
+  return set(b.left, "left"), set(b.right, "right"), set(b.fire, b.jump, b.jump2, "return", "kpenter")
+end
+
 function Match:mousepressed(x, y, button)
   if self.paused then return end
-  local pk, slot = self:activePick()
-  if pk then
-    if button == 1 then
-      for i, r in ipairs(hud.cardRects(#pk.options, pk.index)) do
+  local pu = self.pickUI
+  if pu then
+    local cp = self:currentPick()
+    if button == 1 and cp then
+      for i, r in ipairs(hud.cardRects(#cp.options, pu.index)) do
         if x >= r[1] and x <= r[1] + r[3] and y >= r[2] and y <= r[2] + r[4] then
-          pk.index = i
-          self:choosePick(slot, i)
+          self:choosePick(i)
+          return
         end
       end
     end
+    -- Online, a mouse-bound "take" (e.g. fire on a button other than LMB) also works.
+    local _, _, take = self:pickKeys(pu.slot)
+    if button ~= 1 and take["mouse" .. button] then self:choosePick(pu.index) end
     return
   end
   if self.role ~= "local" then Input.mousepressed(self.myInput, button) end
@@ -504,35 +565,63 @@ function Match:drawCardPick(st)
   love.graphics.setColor(0, 0, 0, 0.75)
   love.graphics.rectangle("fill", 0, 0, app.W, app.H)
 
-  local pk, slot = self:activePick()
+  local cp = st.pick
+  if not cp or #cp.options == 0 then return end
   local players = self:players()
-  if not pk then
-    local names = {}
-    for _, i in ipairs(st.pickers) do names[#names + 1] = players[i] and players[i].name or ("Player " .. i) end
-    app.centered("Waiting for " .. table.concat(names, ", ") .. " to pick a card...", app.fonts.title, 320, { 1, 1, 1, 0.8 })
-    return
-  end
+  local p = players[cp.slot]
+  local color = p and p.color or { 1, 1, 1 }
+  local name = (p and p.name or ("Player " .. cp.slot)):upper()
+  local pu = self.pickUI
+  local count = cp.total > 1 and ("  (" .. cp.num .. "/" .. cp.total .. ")") or ""
 
-  local p = players[slot]
-  local title = self.role == "local" and ((p.name or "Player"):upper() .. " - PICK A CARD") or "PICK A CARD"
-  app.centered(title, app.fonts.big, 90, p.color)
-  local hint = self.role == "local" and LOCAL_HINTS[slot]
-    or "Click a card  -  or A / D and SPACE"
-  if pk.waiting then hint = "Waiting for the host..." end
+  local title
+  if pu and self.role ~= "local" then
+    title = "PICK A CARD" .. count
+  elseif pu then
+    title = name .. " - PICK A CARD" .. count
+  else
+    title = name .. " IS PICKING" .. count
+  end
+  app.centered(title, app.fonts.big, 90, color)
+
+  local hint
+  if pu then
+    local b = self.role == "local" and (Settings.values.binds["p" .. pu.slot] or Settings.values.binds.p1)
+      or Settings.values.binds.online
+    if self.role == "local" then
+      hint = Input.keyName(b.left) .. " / " .. Input.keyName(b.right) .. " to choose, " ..
+        Input.keyName(b.fire) .. " to take"
+    else
+      hint = "Click a card  -  or " .. Input.keyName(b.left) .. " / " .. Input.keyName(b.right) ..
+        " and " .. Input.keyName(b.jump)
+    end
+    if pu.waiting then hint = "Waiting for the host..." end
+  else
+    hint = "Watching " .. (p and p.name or "them") .. " choose"
+  end
   app.centered(hint, app.fonts.med, 140, { 1, 1, 1, 0.7 })
 
-  -- Mouse hover selects (online, and local player 1 can use the mouse too).
-  local mx, my = app.mouse()
-  local rects = hud.cardRects(#pk.options, pk.index)
-  if ui.mouseMoved then
-    for i, r in ipairs(rects) do
-      if mx >= r[1] and mx <= r[1] + r[3] and my >= r[2] and my <= r[2] + r[4] then pk.index = i end
+  if #cp.queued > 0 then
+    local names = {}
+    for _, slot in ipairs(cp.queued) do
+      names[#names + 1] = players[slot] and players[slot].name or ("Player " .. slot)
     end
-    rects = hud.cardRects(#pk.options, pk.index)
+    app.centered("Up next: " .. table.concat(names, ", "), app.fonts.med, 600, { 1, 1, 1, 0.55 })
   end
-  for i, card in ipairs(pk.options) do
+
+  local index = pu and pu.index or cp.hover
+  -- Mouse hover selects for whoever controls the pick (local player 1 can use the mouse too).
+  if pu and not pu.waiting and ui.mouseMoved then
+    local mx, my = app.mouse()
+    for i, r in ipairs(hud.cardRects(#cp.options, index)) do
+      if mx >= r[1] and mx <= r[1] + r[3] and my >= r[2] and my <= r[2] + r[4] then pu.index = i end
+    end
+    index = pu.index
+  end
+  local rects = hud.cardRects(#cp.options, index)
+  for i, card in ipairs(cp.options) do
     local r = rects[i]
-    hud.drawCard(card, r[1], r[2], r[3], r[4], i == pk.index, p.color)
+    hud.drawCard(card, r[1], r[2], r[3], r[4], i == index, color)
   end
 end
 
@@ -556,7 +645,7 @@ function Match:drawMatchOver(st)
   if ui.button("Continue  (+" .. World.CONTINUE_ROUNDS .. " rounds, first to " .. nextScore .. ")", x, 370, w, h) then
     self.world:continueMatch()
   end
-  if ui.button("New Match", x, 432, w, h) then self.world:newMatch() end
+  if ui.button("New Match", x, 432, w, h) then self:newMatch() end
   if self.role == "host" then
     if ui.button("Back to Lobby", x, 494, w, h) then self:backToLobby() end
   else

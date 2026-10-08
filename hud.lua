@@ -74,8 +74,11 @@ function hud.drawScores(players, winScore)
 end
 
 -- Card layout used for both drawing and mouse hit-testing.
+-- Cards shrink so that up to 6 fit across the screen.
 function hud.cardRects(n, selected)
-  local cw, ch, gap = 290, 360, 36
+  local ch = 360
+  local gap = n <= 3 and 36 or 18
+  local cw = math.min(290, math.floor((app.W - 60 - (n - 1) * gap) / math.max(1, n)))
   local startX = (app.W - (n * cw + (n - 1) * gap)) / 2
   local rects = {}
   for i = 1, n do
@@ -84,12 +87,14 @@ function hud.cardRects(n, selected)
   return rects
 end
 
-function hud.drawCard(card, x, y, w, h, selected, ownerColor)
-  local rarity = Cards.rarity[card.rarity]
+-- rarityId: optional override (the card pool editor shows the configured rarity).
+function hud.drawCard(card, x, y, w, h, selected, ownerColor, rarityId)
+  rarityId = rarityId or card.rarity
+  local rarity = Cards.rarity[rarityId]
   local rc = rarity.color
   local t = love.timer.getTime()
 
-  if card.rarity == "legendary" then
+  if rarityId == "legendary" then
     local pulse = 0.5 + 0.5 * math.sin(t * 3)
     love.graphics.setColor(rc[1], rc[2], rc[3], 0.15 + 0.2 * pulse)
     love.graphics.rectangle("fill", x - 8, y - 8, w + 16, h + 16, 18, 18)
@@ -110,9 +115,12 @@ function hud.drawCard(card, x, y, w, h, selected, ownerColor)
   end
   love.graphics.rectangle("line", x, y, w, h, 14, 14)
 
-  love.graphics.setFont(app.fonts.title)
+  -- Narrow cards (5-6 on screen) use a smaller title font so long names fit.
+  local titleFont = app.fonts.title
+  if titleFont:getWidth(card.name) > w - 20 then titleFont = app.fonts.med end
+  love.graphics.setFont(titleFont)
   love.graphics.setColor(0.08, 0.08, 0.1)
-  love.graphics.printf(card.name, x + 10, y + 24, w - 20, "center")
+  love.graphics.printf(card.name, x + 10, y + 40 - titleFont:getHeight() / 2, w - 20, "center")
 
   local font = app.fonts.med
   love.graphics.setFont(font)
