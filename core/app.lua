@@ -1,5 +1,5 @@
 -- Screen stack and the virtual 1280x720 canvas that is letterboxed to the window.
-local ui = require "ui"
+local ui = require "core.ui"
 
 local app = {
   W = 1280, H = 720,

@@ -15,7 +15,7 @@ local ui = {
 
 ui.ACCENT = { 1, 0.55, 0.15 }
 
-local function app() return require "app" end
+local function app() return require "core.app" end
 
 function ui.reset()
   ui.capturing = false

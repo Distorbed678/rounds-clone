@@ -102,18 +102,24 @@ The LÖVE 11.5 runtimes and `appimagetool` are downloaded once from their offici
 
 ### Project layout
 
-| File | Role |
-|---|---|
-| `main.lua`, `conf.lua` | Entry points. `conf.lua` starts Steam before the window exists so the overlay can hook in. `main.lua` adds a frame-capped `love.run`. |
-| `app.lua`, `ui.lua` | Screen stack, a 1280×720 virtual canvas letterboxed to the window, and small immediate-mode widgets. |
-| `screens/` | `menu`, `settings` (Video / Controls / Gameplay tabs), `cards` (card pool editor), `online`, `lobby`, `match`. |
-| `world.lua` | The authoritative simulation: players, bullets, rounds, the card pick queue, disconnects. |
-| `player.lua`, `bullet.lua`, `cards.lua`, `map.lua` | Gameplay, card definitions and dealing rules, arenas. |
-| `input.lua` | Input sources (local keyboard, online mouse+keys, remote) built from the live key bindings. |
-| `net.lua`, `snapshot.lua` | Binary message codec and world snapshots. |
-| `session.lua`, `steam.lua` | Steam lobby management and the Steam networking transport. |
-| `settings.lua` | Persisted settings and the gameplay rules they describe. |
-| `fx.lua`, `bloom.lua`, `hud.lua` | Particles, bloom post-processing, HUD and card drawing. |
+```
+rounds-clone/
+├── main.lua, conf.lua   entry points (LÖVE needs them at the root)
+├── core/                app (screen stack, virtual canvas), ui, input, settings
+├── game/                world (authoritative simulation), player, bullet, cards, map
+├── gfx/                 fx (particles), bloom, hud
+├── online/              net (message codec), snapshot, session (Steam lobby), steam (library loader)
+├── screens/             menu, settings, cards (card pool editor), online, lobby, match
+├── lib/
+│   ├── windows/         steam_api64.dll, luasteam.dll
+│   └── linux/           libsteam_api.so, luasteam.so
+├── build.sh             release builder
+└── steam_appid.txt      Spacewar app id for running from source
+```
+
+- `main.lua` adds a frame-capped `love.run`. `conf.lua` starts Steam before the window exists so the overlay can hook in.
+- Everything renders to a 1280×720 virtual canvas that is letterboxed to the window.
+- `game/world.lua` holds the whole match state and round flow, including the card pick queue and disconnects.
 
 ### Networking model
 
@@ -127,10 +133,10 @@ The LÖVE 11.5 runtimes and `appimagetool` are downloaded once from their offici
 
 | Library | Windows | Linux | Source |
 |---|---|---|---|
-| Steamworks API (SDK 1.65) | `steam_api64.dll` | `libsteam_api.so` | [Steamworks.NET](https://github.com/rlabrecque/Steamworks.NET) redistributables |
-| luasteam v6.0.0 | `luasteam.dll` | `luasteam.so` | [uspgamedev/luasteam](https://github.com/uspgamedev/luasteam/releases/tag/v6.0.0) |
+| Steamworks API (SDK 1.65) | `lib/windows/steam_api64.dll` | `lib/linux/libsteam_api.so` | [Steamworks.NET](https://github.com/rlabrecque/Steamworks.NET) redistributables |
+| luasteam v6.0.0 | `lib/windows/luasteam.dll` | `lib/linux/luasteam.so` | [uspgamedev/luasteam](https://github.com/uspgamedev/luasteam/releases/tag/v6.0.0) |
 
-The two libraries must come from matching SDK versions. If Steam isn't running, a library is missing, or the OS isn't supported, the game falls back to offline-only play and shows the reason on the Online screen.
+The two libraries must come from matching SDK versions. When running from source they're loaded from `lib/<platform>/`; the packaged builds keep them next to the executable. If Steam isn't running, a library is missing, or the OS isn't supported, the game falls back to offline-only play and shows the reason on the Online screen.
 
 ### Settings file
 

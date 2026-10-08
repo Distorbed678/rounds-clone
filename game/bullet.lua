@@ -1,5 +1,5 @@
-local Map = require "map"
-local fx = require "fx"
+local Map = require "game.map"
+local fx = require "gfx.fx"
 
 local Bullet = {}
 Bullet.__index = Bullet

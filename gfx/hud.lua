@@ -1,6 +1,6 @@
 -- Shared drawing helpers for the match: score panels, cards, black holes, crosshair.
-local app = require "app"
-local Cards = require "cards"
+local app = require "core.app"
+local Cards = require "game.cards"
 
 local hud = {}
 

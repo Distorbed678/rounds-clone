@@ -1,9 +1,9 @@
 -- The authoritative match simulation (used for local play and by the online host).
 -- Rendering and networking live in screens/match.lua; this file only runs the game.
-local Player = require "player"
-local Map = require "map"
-local Cards = require "cards"
-local fx = require "fx"
+local Player = require "game.player"
+local Map = require "game.map"
+local Cards = require "game.cards"
+local fx = require "gfx.fx"
 
 local World = {}
 World.__index = World

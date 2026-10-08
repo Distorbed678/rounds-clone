@@ -1,11 +1,11 @@
 -- Settings, shown as an overlay on top of whatever screen opened it.
 -- Tabs: Video, Controls (key rebinding) and Gameplay (card rules; the host's are used online).
-local app = require "app"
-local ui = require "ui"
-local Settings = require "settings"
-local Cards = require "cards"
-local Input = require "input"
-local session = require "session"
+local app = require "core.app"
+local ui = require "core.ui"
+local Settings = require "core.settings"
+local Cards = require "game.cards"
+local Input = require "core.input"
+local session = require "online.session"
 
 local Screen = {}
 Screen.__index = Screen

@@ -1,8 +1,8 @@
-local app = require "app"
-local steam = require "steam"
-local session = require "session"
-local Settings = require "settings"
-local Bloom = require "bloom"
+local app = require "core.app"
+local steam = require "online.steam"
+local session = require "online.session"
+local Settings = require "core.settings"
+local Bloom = require "gfx.bloom"
 
 function love.load(args)
   love.keyboard.setKeyRepeat(false)

@@ -2,21 +2,21 @@
 --   "local"  : 2 players on one keyboard, simulated here.
 --   "host"   : online host; simulates the World, applies remote inputs, broadcasts snapshots.
 --   "client" : online client; sends input, renders snapshots from the host.
-local app = require "app"
-local ui = require "ui"
-local World = require "world"
-local Player = require "player"
-local Bullet = require "bullet"
-local Map = require "map"
-local Cards = require "cards"
-local Input = require "input"
-local Bloom = require "bloom"
-local fx = require "fx"
-local net = require "net"
-local Snap = require "snapshot"
-local hud = require "hud"
-local session = require "session"
-local Settings = require "settings"
+local app = require "core.app"
+local ui = require "core.ui"
+local World = require "game.world"
+local Player = require "game.player"
+local Bullet = require "game.bullet"
+local Map = require "game.map"
+local Cards = require "game.cards"
+local Input = require "core.input"
+local Bloom = require "gfx.bloom"
+local fx = require "gfx.fx"
+local net = require "online.net"
+local Snap = require "online.snapshot"
+local hud = require "gfx.hud"
+local session = require "online.session"
+local Settings = require "core.settings"
 
 local Match = {}
 Match.__index = Match

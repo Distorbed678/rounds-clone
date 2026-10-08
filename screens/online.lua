@@ -1,9 +1,9 @@
 -- Online menu: host a lobby or join one with a code.
-local app = require "app"
-local ui = require "ui"
-local steam = require "steam"
-local session = require "session"
-local Settings = require "settings"
+local app = require "core.app"
+local ui = require "core.ui"
+local steam = require "online.steam"
+local session = require "online.session"
+local Settings = require "core.settings"
 
 local Online = {}
 Online.__index = Online

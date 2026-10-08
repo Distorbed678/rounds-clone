@@ -1,10 +1,10 @@
 -- Card pool editor (pushed from Settings > Gameplay): browse every card, change
 -- its rarity, and enable / disable it. Edits Settings.values.cards.
-local app = require "app"
-local ui = require "ui"
-local Settings = require "settings"
-local Cards = require "cards"
-local hud = require "hud"
+local app = require "core.app"
+local ui = require "core.ui"
+local Settings = require "core.settings"
+local Cards = require "game.cards"
+local hud = require "gfx.hud"
 
 local Screen = {}
 Screen.__index = Screen

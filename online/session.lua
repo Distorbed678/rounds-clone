@@ -1,6 +1,6 @@
 -- Online session: the Steam lobby we're in, its members, joining by code or
 -- invite, and the Steam P2P transport used by the match.
-local steam = require "steam"
+local steam = require "online.steam"
 
 local session = {
   lobby = nil,        -- lobby id (uint64 userdata)

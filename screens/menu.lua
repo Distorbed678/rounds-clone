@@ -1,6 +1,6 @@
-local app = require "app"
-local ui = require "ui"
-local Settings = require "settings"
+local app = require "core.app"
+local ui = require "core.ui"
+local Settings = require "core.settings"
 
 local Menu = {}
 Menu.__index = Menu
@@ -16,7 +16,7 @@ end
 
 -- One line per control scheme, built from the current key bindings.
 function Menu.controlsText()
-  local name = require("input").keyName
+  local name = require("core.input").keyName
   local b = Settings.values.binds
   local function scheme(s)
     return string.format("%s/%s/%s/%s, %s fire, %s block", name(s.left), name(s.up), name(s.down), name(s.right),
@@ -31,7 +31,7 @@ end
 function Menu:draw()
   local t = love.timer.getTime()
   -- Drifting background dots in the four player colours.
-  local colors = require("world").COLORS
+  local colors = require("game.world").COLORS
   for i = 1, 24 do
     local c = colors[(i - 1) % 4 + 1]
     local x = (i * 173 + t * (12 + i % 5 * 6)) % (app.W + 80) - 40

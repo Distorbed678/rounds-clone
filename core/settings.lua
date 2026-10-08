@@ -1,7 +1,7 @@
 -- Player settings: saved to settings.txt in the LÖVE save folder.
-local Bloom = require "bloom"
-local fx = require "fx"
-local Cards = require "cards"
+local Bloom = require "gfx.bloom"
+local fx = require "gfx.fx"
+local Cards = require "game.cards"
 
 local Settings = {}
 

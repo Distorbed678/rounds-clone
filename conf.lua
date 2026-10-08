@@ -11,5 +11,5 @@ function love.conf(t)
 
   -- Start Steam before the window exists so the Steam overlay (invite dialog) can hook in.
   -- Any failure just leaves online play unavailable.
-  pcall(function() require("steam").init() end)
+  pcall(function() require("online.steam").init() end)
 end

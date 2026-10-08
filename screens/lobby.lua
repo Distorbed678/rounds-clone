@@ -1,11 +1,11 @@
 -- The Steam lobby: members, lobby code, invites, and the host's Start button.
-local app = require "app"
-local ui = require "ui"
-local steam = require "steam"
-local session = require "session"
-local Settings = require "settings"
-local World = require "world"
-local net = require "net"
+local app = require "core.app"
+local ui = require "core.ui"
+local steam = require "online.steam"
+local session = require "online.session"
+local Settings = require "core.settings"
+local World = require "game.world"
+local net = require "online.net"
 
 local Lobby = {}
 Lobby.__index = Lobby

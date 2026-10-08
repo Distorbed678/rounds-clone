@@ -7,18 +7,18 @@ local APP_ID = "480" -- Spacewar, Valve's public test app
 
 -- Steam libraries per OS: the Steamworks API library and the luasteam Lua module.
 local LIBS = {
-  Windows = { api = "steam_api64.dll", ext = "dll" },
-  Linux = { api = "libsteam_api.so", ext = "so" },
+  Windows = { api = "steam_api64.dll", ext = "dll", dir = "windows" },
+  Linux = { api = "libsteam_api.so", ext = "so", dir = "linux" },
 }
 
--- Folder holding the Steam libraries: the repo when run with `love .`,
--- the executable's folder for a fused build (RoundsClone.exe / inside the AppImage).
-local function libDir()
+-- Folder holding the Steam libraries: lib/<platform>/ in the repo when run with `love .`,
+-- the executable's folder for a packaged build (RoundsClone.exe / inside the AppImage).
+local function libDir(libs)
   local src = love.filesystem.getSource()
   if love.filesystem.isFused() or src:match("%.love$") then
     return love.filesystem.getSourceBaseDirectory()
   end
-  return src
+  return src .. "/lib/" .. libs.dir
 end
 
 -- Tell steam_api which app we are, without depending on the working directory.
@@ -42,7 +42,7 @@ function steam.init()
     local ffi = require "ffi"
     local libs = LIBS[ffi.os]
     if not libs or ffi.arch ~= "x64" then error("Online play needs 64-bit Windows or Linux") end
-    local dir = libDir()
+    local dir = libDir(libs)
     setAppId(ffi)
 
     -- Load the Steam API from our folder first (globally, on Linux) so luasteam's

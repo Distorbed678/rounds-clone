@@ -41,13 +41,13 @@ download() {
   printf '%s' "$dest"
 }
 
-# The game itself: every file in the repo except tooling, docs, native libraries and build output.
+# The game itself: every file in the repo except tooling, docs, native libraries (lib/) and build output.
 build_love() {
   local out="$DIST/$NAME.love"
   log "Packing $NAME.love"
   rm -f "$out"
   (cd "$ROOT" && zip -9 -q -r "$out" . \
-    -x '.git/*' '.claude/*' 'build/*' 'dist/*' '*.dll' '*.so' '*.md' '*.sh' '.gitignore' 'steam_appid.txt')
+    -x '.git/*' '.claude/*' 'build/*' 'dist/*' 'lib/*' '*.md' '*.sh' '.gitignore' 'steam_appid.txt')
   local files
   files="$(unzip -Z1 "$out")"
   grep -qx 'main.lua' <<<"$files" || die "$NAME.love has no main.lua"
@@ -68,7 +68,7 @@ build_linux() {
   # LÖVE's AppRun runs "$FUSE_PATH" as a fused game when it is set. The Steam libraries
   # sit next to the .love, which is where steam.lua looks for them in a fused build.
   cp "$DIST/$NAME.love" "$appdir/$NAME.love"
-  cp "$ROOT/libsteam_api.so" "$ROOT/luasteam.so" "$ROOT/steam_appid.txt" "$appdir/"
+  cp "$ROOT/lib/linux/libsteam_api.so" "$ROOT/lib/linux/luasteam.so" "$ROOT/steam_appid.txt" "$appdir/"
   sed -i "s|^#FUSE_PATH=\"\$APPDIR/my_game.love\"|FUSE_PATH=\"\$APPDIR/$NAME.love\"|" "$appdir/AppRun"
   grep -q "^FUSE_PATH=" "$appdir/AppRun" || die "could not set FUSE_PATH in AppRun"
 
@@ -109,7 +109,7 @@ build_windows() {
   mkdir -p "$out"
   cat "$src/love.exe" "$DIST/$NAME.love" > "$out/$NAME.exe"
   cp "$src"/*.dll "$src/license.txt" "$out/"
-  cp "$ROOT/steam_api64.dll" "$ROOT/luasteam.dll" "$ROOT/steam_appid.txt" "$out/"
+  cp "$ROOT/lib/windows/steam_api64.dll" "$ROOT/lib/windows/luasteam.dll" "$ROOT/steam_appid.txt" "$out/"
 
   rm -f "$DIST/$NAME-windows-x64.zip"
   (cd "$BUILD/windows" && zip -9 -q -r "$DIST/$NAME-windows-x64.zip" "$NAME")

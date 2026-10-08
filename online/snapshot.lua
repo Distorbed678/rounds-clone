@@ -1,7 +1,7 @@
 -- Compact binary snapshots of the world, sent host -> clients ~30 times a second.
 local bit = require "bit"
-local Bullet = require "bullet"
-local net = require "net"
+local Bullet = require "game.bullet"
+local net = require "online.net"
 
 local pack, unpack = love.data.pack, love.data.unpack
 
