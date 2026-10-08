@@ -1,4 +1,7 @@
 -- Screen stack and the virtual 1280x720 canvas that is letterboxed to the window.
+-- Everything is laid out in 1280x720 units but rendered at the window's real resolution:
+-- the canvas and fonts use a DPI scale equal to the window / virtual scale, so text and
+-- shapes stay sharp at any window size instead of being stretched up from 1280x720.
 local ui = require "core.ui"
 
 local app = {
@@ -6,20 +9,26 @@ local app = {
   stack = {},
   fonts = {},
   scale = 1, ox = 0, oy = 0,
+  renderScale = nil, -- DPI scale the canvas and fonts were built for
   showFps = false,
 }
 
+local FONT_SIZES = { tiny = 12, small = 14, med = 18, button = 22, title = 26, big = 36, huge = 96 }
+
+-- (Re)create the canvas and fonts for a render scale. Must not run while a canvas is active.
+local function buildTargets(s)
+  app.renderScale = s
+  for name, size in pairs(FONT_SIZES) do
+    app.fonts[name] = love.graphics.newFont(size, "normal", s)
+  end
+  if app.canvas then app.canvas:release() end
+  local ok, canvas = pcall(love.graphics.newCanvas, app.W, app.H, { msaa = 4, dpiscale = s })
+  app.canvas = ok and canvas or love.graphics.newCanvas(app.W, app.H, { dpiscale = s })
+end
+
 function app.load()
-  local f = love.graphics.newFont
-  app.fonts.tiny = f(12)
-  app.fonts.small = f(14)
-  app.fonts.med = f(18)
-  app.fonts.button = f(22)
-  app.fonts.title = f(26)
-  app.fonts.big = f(36)
-  app.fonts.huge = f(96)
-  local ok, canvas = pcall(love.graphics.newCanvas, app.W, app.H, { msaa = 4 })
-  app.canvas = ok and canvas or love.graphics.newCanvas(app.W, app.H)
+  app.fonts.overlay = love.graphics.newFont(14) -- drawn straight onto the window (FPS counter)
+  app.updateViewport()
 end
 
 ---------------------------------------------------------------- screens
@@ -62,6 +71,8 @@ function app.updateViewport()
   app.scale = math.min(ww / app.W, wh / app.H)
   app.ox = math.floor((ww - app.W * app.scale) / 2)
   app.oy = math.floor((wh - app.H * app.scale) / 2)
+  local s = math.max(0.5, app.scale)
+  if not app.renderScale or math.abs(s - app.renderScale) > 0.001 then buildTargets(s) end
 end
 
 -- Mouse position in game (virtual) coordinates.
@@ -100,7 +111,7 @@ function app.draw()
   love.graphics.setBlendMode("alpha")
 
   if app.showFps then
-    love.graphics.setFont(app.fonts.small)
+    love.graphics.setFont(app.fonts.overlay)
     love.graphics.setColor(0, 0, 0, 0.6)
     love.graphics.rectangle("fill", 4, 4, 70, 20)
     love.graphics.setColor(0.6, 1, 0.6)

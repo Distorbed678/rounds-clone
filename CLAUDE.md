@@ -16,13 +16,27 @@ A clone of the game ROUNDS: 2D side-view duels where the round loser picks an up
 
 The LÖVE runtimes and appimagetool are downloaded once into `build/cache/` (gitignored). If you add asset folders, make sure `build_love` doesn't exclude them.
 
+## Workflow: commit and release every change
+**After every bug fix or change, commit it, push it and publish a GitHub release, unless the user says not to commit or release yet.**
+1. Run the relevant checks first (syntax check, headless harnesses, screenshots).
+2. Commit with a descriptive message and push to `main`. If the push can't find credentials (the global `credential.helper` is `cache`), push with `git -c credential.helper= -c credential.helper='!gh auth git-credential' push origin main`.
+3. Run `./build.sh all`, then smoke-test the AppImage: launch it and confirm it loads the bundled Steam libraries.
+4. Create the release:
+
+       gh release create vX.Y.Z dist/RoundsClone-x86_64.AppImage dist/RoundsClone-windows-x64.zip \
+         --repo Distorbed678/rounds-clone --target "$(git rev-parse HEAD)" --title "Rounds Clone vX.Y.Z" --notes-file <notes.md>
+
+   - `--target` needs the full commit SHA.
+   - The release notes cover: what was fixed or changed, whether online play is still compatible with the previous version (if `session.PROTOCOL` was bumped, say so), the download table, and SHA-256 checksums of both files.
+5. Versioning: bump the patch version (v0.1.1 → v0.1.2) for fixes and small changes, and the minor version (v0.1.x → v0.2.0) for feature batches. Check the latest tag with `gh release list --repo Distorbed678/rounds-clone`.
+
 ## Architecture
 `main.lua` and `conf.lua` stay at the repo root (LÖVE requires it). Modules are required by dotted path, e.g. `require "game.world"`, `require "online.net"`.
 
 | Path | Role |
 |---|---|
 | `main.lua` / `conf.lua` | Entry points. `conf.lua` calls `steam.init()` before the window exists so the Steam overlay can hook. `main.lua` overrides `love.run` to add the max-FPS cap and handles F11 / Alt+Enter. |
-| `core/app.lua` | Screen stack (`switch`/`push`/`pop`). Everything renders to a 1280×720 virtual canvas that is letterboxed to the window. `app.mouse()` returns virtual coordinates. |
+| `core/app.lua` | Screen stack (`switch`/`push`/`pop`). Everything is laid out in 1280×720 units and letterboxed to the window, but `app.canvas` and `app.fonts.*` are built with a `dpiscale` equal to the window scale, so rendering happens at native resolution (rebuilt in `app.updateViewport` when the window size changes). Always draw through `app.fonts` and `app.canvas`; never cache them across frames. `app.mouse()` returns virtual coordinates. |
 | `core/ui.lua` | Immediate-mode widgets (`button`, `cycler`, `textField`, `panel`). Only the top screen's widgets get input. Arrows/Enter for navigation. `ui.capturing` hands navigation keys to a screen that's waiting for a key to bind. |
 | `core/input.lua` | Input sources: `keys(binds)` (local), `mouse(binds)` (online, mouse aim), `remote()`. Bindings are the live `Settings.values.binds.{p1,p2,online}` tables (keys or `mouse1`..`mouse5`). Jump and block use **press counters** (`jumpCount`, `blockCount`), not events. `pickHover` carries the picker's selection to the host. |
 | `core/settings.lua` | Persisted settings, key binding (`Settings.bind` swaps conflicts), window/VSync application, and `Settings.cardRules()` (gameplay rules from the settings). |
