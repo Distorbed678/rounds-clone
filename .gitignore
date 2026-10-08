@@ -1,0 +1,7 @@
+# Build outputs
+*.love
+dist/
+
+# Local editor / tool state
+.vscode/
+.claude/settings.local.json

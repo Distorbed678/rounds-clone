@@ -1,0 +1,151 @@
+-- Screen stack and the virtual 1280x720 canvas that is letterboxed to the window.
+local ui = require "ui"
+
+local app = {
+  W = 1280, H = 720,
+  stack = {},
+  fonts = {},
+  scale = 1, ox = 0, oy = 0,
+  showFps = false,
+}
+
+function app.load()
+  local f = love.graphics.newFont
+  app.fonts.tiny = f(12)
+  app.fonts.small = f(14)
+  app.fonts.med = f(18)
+  app.fonts.button = f(22)
+  app.fonts.title = f(26)
+  app.fonts.big = f(36)
+  app.fonts.huge = f(96)
+  local ok, canvas = pcall(love.graphics.newCanvas, app.W, app.H, { msaa = 4 })
+  app.canvas = ok and canvas or love.graphics.newCanvas(app.W, app.H)
+end
+
+---------------------------------------------------------------- screens
+-- A screen is a table with optional enter, leave, update(dt, isTop), draw,
+-- keypressed, keyreleased, mousepressed, mousereleased, textinput.
+
+function app.switch(screen, ...)
+  for i = #app.stack, 1, -1 do
+    local s = app.stack[i]
+    if s.leave then s:leave() end
+  end
+  app.stack = { screen }
+  ui.reset()
+  if screen.enter then screen:enter(...) end
+end
+
+function app.push(screen, ...)
+  table.insert(app.stack, screen)
+  ui.reset()
+  if screen.enter then screen:enter(...) end
+end
+
+function app.pop()
+  local s = table.remove(app.stack)
+  if s and s.leave then s:leave() end
+  ui.reset()
+end
+
+function app.top()
+  return app.stack[#app.stack]
+end
+
+function app.base()
+  return app.stack[1]
+end
+
+---------------------------------------------------------------- coordinates
+function app.updateViewport()
+  local ww, wh = love.graphics.getDimensions()
+  app.scale = math.min(ww / app.W, wh / app.H)
+  app.ox = math.floor((ww - app.W * app.scale) / 2)
+  app.oy = math.floor((wh - app.H * app.scale) / 2)
+end
+
+-- Mouse position in game (virtual) coordinates.
+function app.mouse()
+  local x, y = love.mouse.getPosition()
+  return (x - app.ox) / app.scale, (y - app.oy) / app.scale
+end
+
+---------------------------------------------------------------- loop
+function app.update(dt)
+  app.updateViewport()
+  local n = #app.stack
+  for i = 1, n do
+    local s = app.stack[i]
+    if s and s.update then s:update(dt, i == #app.stack) end
+  end
+end
+
+function app.draw()
+  app.updateViewport()
+  love.graphics.setCanvas(app.canvas)
+  love.graphics.clear(0.11, 0.11, 0.15)
+  love.graphics.origin()
+  for i, s in ipairs(app.stack) do
+    ui.active = (i == #app.stack)
+    if ui.active then ui.beginFrame() end
+    if s.draw then s:draw() end
+  end
+  ui.endFrame()
+  love.graphics.setCanvas()
+
+  love.graphics.clear(0, 0, 0)
+  love.graphics.setColor(1, 1, 1)
+  love.graphics.setBlendMode("alpha", "premultiplied")
+  love.graphics.draw(app.canvas, app.ox, app.oy, 0, app.scale, app.scale)
+  love.graphics.setBlendMode("alpha")
+
+  if app.showFps then
+    love.graphics.setFont(app.fonts.small)
+    love.graphics.setColor(0, 0, 0, 0.6)
+    love.graphics.rectangle("fill", 4, 4, 70, 20)
+    love.graphics.setColor(0.6, 1, 0.6)
+    love.graphics.print(love.timer.getFPS() .. " FPS", 10, 7)
+  end
+end
+
+local function forward(name, ...)
+  local s = app.top()
+  if s and s[name] then s[name](s, ...) end
+end
+
+function app.keypressed(key, scancode, isrepeat)
+  ui.keypressed(key)
+  forward("keypressed", key, isrepeat)
+end
+
+function app.keyreleased(key)
+  forward("keyreleased", key)
+end
+
+function app.mousepressed(x, y, button)
+  local vx, vy = (x - app.ox) / app.scale, (y - app.oy) / app.scale
+  ui.mousepressed(vx, vy, button)
+  forward("mousepressed", vx, vy, button)
+end
+
+function app.mousereleased(x, y, button)
+  forward("mousereleased", (x - app.ox) / app.scale, (y - app.oy) / app.scale, button)
+end
+
+function app.mousemoved()
+  ui.mouseMoved = true
+end
+
+function app.textinput(t)
+  ui.textinput(t)
+  forward("textinput", t)
+end
+
+---------------------------------------------------------------- helpers
+function app.centered(text, font, y, color)
+  love.graphics.setFont(font)
+  love.graphics.setColor(color or { 1, 1, 1 })
+  love.graphics.printf(text, 0, y, app.W, "center")
+end
+
+return app
