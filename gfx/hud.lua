@@ -4,8 +4,9 @@ local Cards = require "game.cards"
 
 local hud = {}
 
--- Card names grouped with counts, each tinted by rarity (a LÖVE coloredtext table).
-function hud.cardSummary(p)
+-- Lay out a player's cards as "Name x2, Name, ..." wrapped to width w, aligned left or right.
+-- Returns the items { card, count, text, x, y, w, h } and the total height.
+function hud.cardChips(p, x, y, w, align, font)
   local order, counts = {}, {}
   for _, c in ipairs(p.cards) do
     if not counts[c] then
@@ -14,17 +15,38 @@ function hud.cardSummary(p)
     end
     counts[c] = counts[c] + 1
   end
-  local text = {}
-  for i, c in ipairs(order) do
-    local rc = Cards.rarity[c.rarity].color
-    table.insert(text, { rc[1], rc[2], rc[3], 0.75 })
-    table.insert(text, c.name .. (counts[c] > 1 and (" x" .. counts[c]) or "") .. (i < #order and ", " or ""))
+  local sepW, fh = font:getWidth(", "), font:getHeight()
+  local lines, widths = { {} }, { 0 }
+  for _, c in ipairs(order) do
+    local text = c.name .. (counts[c] > 1 and (" x" .. counts[c]) or "")
+    local tw = font:getWidth(text)
+    local li = #lines
+    local need = (#lines[li] > 0 and sepW or 0) + tw
+    if #lines[li] > 0 and widths[li] + need > w then
+      li = li + 1
+      lines[li], widths[li] = {}, 0
+      need = tw
+    end
+    table.insert(lines[li], { card = c, count = counts[c], text = text, w = tw, h = fh })
+    widths[li] = widths[li] + need
   end
-  return text
+  local items = {}
+  for li, line in ipairs(lines) do
+    local cx = align == "right" and (x + w - widths[li]) or x
+    for k, item in ipairs(line) do
+      if k > 1 then cx = cx + sepW end
+      item.x, item.y = cx, y + (li - 1) * fh
+      cx = cx + item.w
+      items[#items + 1] = item
+    end
+  end
+  return items, #order > 0 and #lines * fh or 0
 end
 
--- One panel per player across the top of the screen.
+-- One panel per player across the top of the screen. Returns the card name items
+-- (see hud.cardChips, plus `bottom`, the end of that player's list) for hover tooltips.
 function hud.drawScores(players, winScore)
+  local hover = {}
   local n = #players
   local W = app.W
   local pw = n <= 2 and 320 or math.floor((W - 48 - (n - 1) * 16) / n)
@@ -66,10 +88,80 @@ function hud.drawScores(players, winScore)
     end
 
     if #p.cards > 0 then
-      love.graphics.setFont(app.fonts.small)
-      love.graphics.setColor(1, 1, 1, a)
-      love.graphics.printf(hud.cardSummary(p), x, 62, pw, align)
+      local font = app.fonts.small
+      love.graphics.setFont(font)
+      local items, height = hud.cardChips(p, x, 62, pw, align, font)
+      for k, item in ipairs(items) do
+        local rc = Cards.rarity[item.card.rarity].color
+        if k > 1 and item.y == items[k - 1].y then
+          love.graphics.setColor(1, 1, 1, 0.4 * a)
+          love.graphics.print(",", item.x - font:getWidth(", "), item.y)
+        end
+        love.graphics.setColor(rc[1], rc[2], rc[3], 0.75 * a)
+        love.graphics.print(item.text, item.x, item.y)
+        item.bottom = 62 + height
+        hover[#hover + 1] = item
+      end
     end
+  end
+  return hover
+end
+
+-- Which card name (from hud.drawScores) is under the point, if any.
+function hud.cardAt(items, mx, my)
+  for _, item in ipairs(items or {}) do
+    if mx >= item.x - 2 and mx <= item.x + item.w + 2 and my >= item.y and my <= item.y + item.h then return item end
+  end
+end
+
+-- What a card does, in a box just below the hovered player's card list.
+function hud.drawCardTooltip(item)
+  local c = item.card
+  local rarity = Cards.rarity[c.rarity]
+  local rc = rarity.color
+  local w, pad = 320, 14
+  local body = app.fonts.med
+  local small = app.fonts.small
+  local title = app.fonts.button
+
+  local function wrapped(font, text) local _, ls = font:getWrap(text, w - pad * 2); return #ls * font:getHeight() end
+  local h = pad + title:getHeight() + 4 + small:getHeight() + 10
+  for _, line in ipairs(c.lines) do h = h + wrapped(body, line) + 4 end
+  if c.stack then h = h + 6 + wrapped(small, "Stacking: " .. c.stack) end
+  h = h + pad
+
+  local x = math.max(10, math.min(app.W - w - 10, item.x - 20))
+  local y = math.min(app.H - h - 10, item.bottom + 8)
+  love.graphics.setColor(0.09, 0.09, 0.12, 0.97)
+  love.graphics.rectangle("fill", x, y, w, h, 10, 10)
+  love.graphics.setColor(rc)
+  love.graphics.setLineWidth(2)
+  love.graphics.rectangle("line", x, y, w, h, 10, 10)
+
+  local ty = y + pad
+  love.graphics.setFont(title)
+  love.graphics.printf(c.name .. (item.count > 1 and ("  x" .. item.count) or ""), x + pad, ty, w - pad * 2, "left")
+  ty = ty + title:getHeight() + 4
+  love.graphics.setFont(small)
+  love.graphics.printf(rarity.name:upper() .. (c.block and "  -  BLOCK" or ""), x + pad, ty, w - pad * 2, "left")
+  ty = ty + small:getHeight() + 10
+  love.graphics.setFont(body)
+  for _, line in ipairs(c.lines) do
+    local first = line:sub(1, 1)
+    if first == "+" then
+      love.graphics.setColor(0.5, 1, 0.5)
+    elseif first == "-" then
+      love.graphics.setColor(1, 0.45, 0.45)
+    else
+      love.graphics.setColor(1, 1, 1, 0.85)
+    end
+    love.graphics.printf(line, x + pad, ty, w - pad * 2, "left")
+    ty = ty + wrapped(body, line) + 4
+  end
+  if c.stack then
+    love.graphics.setFont(small)
+    love.graphics.setColor(1, 1, 1, 0.5)
+    love.graphics.printf("Stacking: " .. c.stack, x + pad, ty + 6, w - pad * 2, "left")
   end
 end
 

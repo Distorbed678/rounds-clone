@@ -3,6 +3,23 @@ local Map = {}
 
 local function R(x, y, w, h) return { x = x, y = y, w = w, h = h } end
 
+-- A left/right symmetric arena (1280 wide). `half` rects are used as given and mirrored
+-- around the centre line; `center` rects are used once. Spawns 1 and 3 are given for the
+-- left side, 2 and 4 are their mirror images.
+local function Sym(name, spawnA, spawnB, half, center)
+  local rects = {}
+  for _, r in ipairs(half) do
+    rects[#rects + 1] = r
+    rects[#rects + 1] = R(1280 - r.x - r.w, r.y, r.w, r.h)
+  end
+  for _, r in ipairs(center or {}) do rects[#rects + 1] = r end
+  return {
+    name = name,
+    spawns = { spawnA, { 1280 - spawnA[1], spawnA[2] }, spawnB, { 1280 - spawnB[1], spawnB[2] } },
+    rects = rects,
+  }
+end
+
 Map.list = {
   {
     name = "Classic",
@@ -139,14 +156,77 @@ Map.list = {
       R(980, 340, 120, 16),
     },
   },
+
+  -- v0.3 arenas (symmetric)
+  Sym("Twin Towers", { 220, 560 }, { 360, 260 },
+    { R(330, 300, 60, 300), R(470, 460, 120, 16) },
+    { R(140, 600, 1000, 40), R(560, 330, 160, 16) }),
+  Sym("Gauntlet", { 180, 560 }, { 340, 440 },
+    { R(260, 480, 160, 16), R(460, 224, 24, 140) },
+    { R(80, 600, 1120, 40), R(80, 200, 1120, 24), R(560, 400, 160, 16) }),
+  Sym("Floating Isles", { 200, 520 }, { 280, 290 },
+    { R(100, 560, 220, 30), R(400, 450, 140, 20), R(220, 330, 120, 20) },
+    { R(560, 520, 160, 30), R(570, 250, 140, 20) }),
+  Sym("The Ring", { 240, 580 }, { 380, 440 },
+    { R(140, 260, 30, 360), R(320, 480, 140, 16) },
+    { R(140, 620, 1000, 30), R(340, 140, 600, 24), R(540, 360, 200, 16) }),
+  Sym("Ramparts", { 150, 480 }, { 470, 390 },
+    { R(60, 520, 180, 100), R(240, 560, 120, 60), R(420, 430, 120, 16) },
+    { R(60, 620, 1160, 40), R(590, 320, 100, 16), R(620, 560, 40, 60) }),
+  Sym("Sky Bridge", { 200, 400 }, { 260, 260 },
+    { R(60, 440, 280, 280), R(200, 300, 120, 16) },
+    { R(340, 440, 600, 12), R(580, 280, 120, 16), R(540, 620, 200, 20) }),
+  Sym("Crossfire", { 180, 560 }, { 320, 260 },
+    { R(250, 500, 140, 16), R(420, 400, 140, 16), R(250, 300, 140, 16) },
+    { R(100, 600, 1080, 40), R(570, 300, 140, 16) }),
+  Sym("The Well", { 200, 540 }, { 170, 260 },
+    { R(100, 580, 420, 40), R(240, 440, 140, 16), R(120, 300, 100, 16) },
+    { R(520, 690, 240, 30), R(560, 380, 160, 16) }),
+  Sym("Zigzag", { 300, 600 }, { 220, 290 },
+    { R(100, 520, 200, 16), R(380, 430, 160, 16), R(140, 330, 160, 16) },
+    { R(200, 640, 880, 30), R(560, 500, 160, 16), R(580, 240, 120, 16) }),
+  Sym("Fortress", { 200, 580 }, { 340, 300 },
+    { R(520, 420, 24, 200), R(240, 500, 140, 16), R(280, 340, 120, 16) },
+    { R(120, 620, 1040, 40), R(520, 400, 240, 20) }),
+  Sym("Pinball", { 180, 590 }, { 270, 290 },
+    { R(250, 520, 40, 40), R(420, 440, 40, 40), R(250, 330, 40, 40), R(130, 420, 40, 40) },
+    { R(100, 630, 1080, 30), R(620, 350, 40, 40), R(600, 520, 80, 20) }),
+  Sym("Overpass", { 160, 580 }, { 300, 340 },
+    { R(240, 380, 320, 20), R(100, 500, 120, 16) },
+    { R(80, 620, 1120, 30), R(590, 250, 100, 16) }),
+  Sym("Canyon", { 160, 380 }, { 460, 480 },
+    { R(60, 420, 220, 300), R(380, 520, 120, 16), R(120, 280, 100, 16) },
+    { R(280, 640, 720, 40), R(560, 420, 160, 16) }),
+  Sym("Lighthouse", { 200, 560 }, { 440, 320 },
+    { R(260, 480, 160, 16), R(380, 360, 120, 16) },
+    { R(100, 600, 1080, 40), R(610, 250, 60, 350), R(570, 230, 140, 20) }),
+  Sym("Stepping Stones", { 150, 540 }, { 150, 260 },
+    { R(80, 580, 140, 30), R(300, 520, 100, 20), R(460, 440, 90, 20), R(280, 360, 90, 20), R(100, 300, 100, 20) },
+    { R(590, 560, 100, 24), R(590, 300, 100, 20) }),
 }
 
--- Pick a random map, avoiding the index of the previous one.
-function Map.random(exclude)
+-- Stable index per map (sent over the network) and a name-based id (settings file).
+Map.byId = {}
+for i, m in ipairs(Map.list) do
+  m.index = i
+  m.id = m.name:lower():gsub("[^%w]+", "_")
+  Map.byId[m.id] = m
+end
+
+-- Pick a random map, avoiding the index of the previous one. `disabled` is an optional
+-- set of map indices to leave out (the map pool setting); if it leaves nothing, all maps are used.
+function Map.random(exclude, disabled)
+  local pool = {}
+  for i in ipairs(Map.list) do
+    if not (disabled and disabled[i]) then pool[#pool + 1] = i end
+  end
+  if #pool == 0 then
+    for i in ipairs(Map.list) do pool[i] = i end
+  end
   local i
   repeat
-    i = love.math.random(#Map.list)
-  until i ~= exclude or #Map.list == 1
+    i = pool[love.math.random(#pool)]
+  until i ~= exclude or #pool == 1
   return Map.list[i], i
 end
 

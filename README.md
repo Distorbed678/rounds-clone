@@ -12,14 +12,15 @@ A fan-made clone of [ROUNDS](https://store.steampowered.com/app/1557740/ROUNDS/)
 
 ## Features
 
-- **56 upgrade cards** across five rarities: 17 common, 18 uncommon, 14 rare, 5 epic and 2 legendary. They include bouncing and exploding bullets, homing, lasers, black holes, orbiting shields, revives and block abilities.
+- **100 upgrade cards** across five rarities: 30 common, 26 uncommon, 20 rare, 14 epic and 10 legendary. They include bouncing and exploding bullets, homing, lasers, black holes, orbiting shields, revives, shields, a turret, piercing railgun bolts, mirrored shots and plenty of block abilities.
 - **Every card stacks.** Stat cards add up, and ability cards get stronger with each copy (for example more back shots, bigger mine blasts or wider lasers). Each card shows what extra copies do.
 - **Blocking reflects bullets** back at the shooter. The *Reflector* card sends extra bullets back.
 - **Special cards:** *Reroll* (re-deals your hand), *Table Flip* (rerolls every card you own while keeping their rarities) and *Shrine of Order* (as in Risk of Rain 2: for each rarity, all your cards of that rarity become copies of one of them).
-- **10 arenas**, each with spawns for 4 players.
+- **25 arenas**, each with spawns for 4 players. Use the map pool to choose which ones appear.
+- **Card info in game:** hover a card name under a player's score to see what it does.
 - **Card picks in turn order:** every player except the round winner picks, lowest score first. Everyone watches the current picker's hand and sees which card they're hovering.
 - **Match flow:** first to N rounds. After a win you can *Continue* (+3 rounds) or start a *New Match*. Online, players vote and the host sees the votes before choosing.
-- **Custom rules:** choose how many cards are offered (2–6) and how many picks you get per round (1–5), set the chance of each rarity, and use the card pool editor to change any card's rarity or disable it. **Online, the host's rules are used.**
+- **Custom rules:** choose how many cards are offered (2–6) and how many picks you get per round (1–5), set the chance of each rarity, use the card pool editor to change any card's rarity or disable it, and use the map pool to turn arenas on or off. **Online, the host's rules are used.**
 - **Settings:** window mode, monitor, resolution, VSync (off/on/adaptive), FPS cap, bloom, screen shake, particles and fully rebindable controls.
 
 ## Download and install
@@ -121,7 +122,7 @@ rounds-clone/
 ├── game/                world (authoritative simulation), player, bullet, cards, map
 ├── gfx/                 fx (particles), bloom, hud
 ├── online/              net (message codec), snapshot, session (Steam lobby), steam (library loader)
-├── screens/             menu, settings, cards (card pool editor), online, lobby, match
+├── screens/             menu, settings, cards (card pool editor), maps (map pool editor), online, lobby, match
 ├── lib/
 │   ├── windows/         steam_api64.dll, luasteam.dll
 │   └── linux/           libsteam_api.so, luasteam.so

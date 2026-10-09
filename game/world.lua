@@ -87,7 +87,7 @@ function World:nearestEnemy(p, x, y, visibleOnly)
 end
 
 function World:startRound()
-  self.map, self.mapIndex = Map.random(self.mapIndex)
+  self.map, self.mapIndex = Map.random(self.mapIndex, self.rules.maps)
   self.bullets = {}
   self.pending = {}
   self.wells = {}

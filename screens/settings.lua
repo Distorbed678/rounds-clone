@@ -4,6 +4,7 @@ local app = require "core.app"
 local ui = require "core.ui"
 local Settings = require "core.settings"
 local Cards = require "game.cards"
+local Map = require "game.map"
 local Input = require "core.input"
 local session = require "online.session"
 local platform = require "core.platform"
@@ -323,6 +324,11 @@ function Screen:drawGameplay(x, y, w)
   end
   ly = ly + gap
 
+  if ui.button("Map Pool...  (" .. Settings.enabledMapCount() .. " / " .. #Map.list .. " enabled)", lx, ly, colW, h) then
+    app.push(require("screens.maps").new())
+  end
+  ly = ly + gap
+
   if ui.button("Reset Gameplay Settings", lx, ly, colW, h) then Settings.resetGameplay() end
 
   -- Rarity chances
@@ -347,7 +353,7 @@ function Screen:drawGameplay(x, y, w)
   love.graphics.printf(
     "Online matches use the host's gameplay settings. Changes apply from the next match.\n" ..
     "A rarity's chance is its weight out of the total. Rarities with no enabled cards are skipped.",
-    x, y + 5 * gap + 16, w, "center")
+    x, y + 6 * gap + 16, w, "center")
 end
 
 ---------------------------------------------------------------- draw

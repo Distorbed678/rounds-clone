@@ -33,7 +33,7 @@ local function u16(v)
   return v
 end
 
-local PLAYER_FMT = "<fffbffBBfBBBBBfBfHBB" -- ..., score, stasis copies, match-over vote
+local PLAYER_FMT = "<fffbffBBfBBBBBfBfHBBBB" -- ..., score, stasis copies, match-over vote, shield, sentries
 local BULLET_FMT = "<HhhhhBBB"
 
 function Snap.encode(world, events)
@@ -72,7 +72,7 @@ function Snap.encode(world, events)
       p.hp or 0, s.maxHp, u8(p.r), flags,
       p.invuln or 0, u8(p.ammo), u8(s.ammo), reload, u8(255 * (p.blockCd or 0) / s.blockCooldown),
       u8(s.orbs), p.orbAngle or 0, u8(p.livesLeft), pending, u16(p.score),
-      u8(s.stasis), (world.votes and world.votes[p.slot]) or 0)
+      u8(s.stasis), (world.votes and world.votes[p.slot]) or 0, u8(p.shield), u8(s.sentry))
   end
 
   local bullets = world.bullets
@@ -148,7 +148,8 @@ function Snap.decode(data)
     local flags
     p.x, p.y, p.aim, p.facing, p.hp, p.maxHp, p.r, flags,
     p.invuln, p.ammo, p.maxAmmo, p.reload, p.blockCd,
-    p.orbs, p.orbAngle, p.lives, p.pending, p.score, p.stasis, p.vote, pos = unpack(PLAYER_FMT, raw, pos)
+    p.orbs, p.orbAngle, p.lives, p.pending, p.score, p.stasis, p.vote, p.shield, p.sentry, pos =
+      unpack(PLAYER_FMT, raw, pos)
     p.dead = bit.band(flags, 1) ~= 0
     p.blocking = bit.band(flags, 2) ~= 0
     p.empowered = bit.band(flags, 4) ~= 0

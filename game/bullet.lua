@@ -61,6 +61,11 @@ function Bullet.new(owner, x, y, vx, vy)
     blackhole = s.blackhole,   -- copies
     scavenger = s.scavenger,
     laser = s.laser > 0,
+    pierce = s.pierce,         -- players this bullet can still pass through
+    shrapnel = s.shrapnel,     -- copies; impacts burst into 4 shards each
+    cluster = s.cluster,       -- copies; explosions split into mini blasts
+    hydra = s.hydra,           -- copies; hits spawn bullets that fly off
+    seek = s.seek,             -- homing strength after the first bounce
     color = owner.color,
     life = 4,
     age = 0,
@@ -83,6 +88,24 @@ function Bullet:clone()
   for k, v in pairs(self) do c[k] = v end
   c.id = nextId
   c.trail = {}
+  c.hitSet = nil
+  return c
+end
+
+-- A small bullet spawned by another one (shards, Hydra heads): no chain effects of its own.
+function Bullet:spawnChild(game, x, y, ang, speed, damage, skip)
+  local c = Bullet.new(self.owner, x, y, math.cos(ang) * speed, math.sin(ang) * speed)
+  c.damage = damage
+  c.r = math.max(2.5, self.r * 0.6)
+  c.color = self.color
+  c.isChild = true
+  c.laser = false
+  c.bounces = 0
+  c.explosion, c.poison, c.homing, c.seek = 0, 0, 0, 0
+  c.splitsLeft, c.sticky, c.blackhole, c.pierce = 0, 0, 0, 0
+  c.shrapnel, c.cluster, c.hydra = 0, 0, 0
+  if skip then c.hitSet = { [skip] = true } end
+  game:addBullet(c)
   return c
 end
 
@@ -113,6 +136,14 @@ function Bullet:update(dt, game)
     end
   end
 
+  -- Time Warp: an enemy of this bullet's owner has slowed every bullet aimed at them.
+  for _, p in ipairs(game.players) do
+    if p ~= self.owner and not p.dead and (p.warpTimer or 0) > 0 then
+      dt = dt * 0.35
+      break
+    end
+  end
+
   self.age = self.age + dt
   self.life = self.life - dt
   if self.life <= 0 then
@@ -121,7 +152,8 @@ function Bullet:update(dt, game)
   end
 
   -- Homing only kicks in after a moment and only steers toward targets roughly ahead.
-  if self.homing > 0 and self.age > 0.2 then
+  local homing = self.homing + (self.bounced and self.seek or 0) -- Ricochet Seeker
+  if homing > 0 and self.age > 0.2 then
     local target = game:nearestEnemy(self.owner, self.x, self.y, true)
     if target then
       local speed = math.sqrt(self.vx * self.vx + self.vy * self.vy)
@@ -129,7 +161,7 @@ function Bullet:update(dt, game)
       local want = math.atan2(target.y - self.y, target.x - self.x)
       local diff = (want - cur + math.pi) % (math.pi * 2) - math.pi
       if math.abs(diff) < HOMING_CONE then
-        local maxTurn = self.homing * dt
+        local maxTurn = homing * dt
         cur = cur + math.max(-maxTurn, math.min(maxTurn, diff))
         self.vx, self.vy = math.cos(cur) * speed, math.sin(cur) * speed
       end
@@ -250,7 +282,8 @@ function Bullet:step(dt, game)
 
   for _, p in ipairs(game.players) do
     -- A bullet can only hit its own shooter after it has bounced.
-    if not p.dead and (p ~= self.owner or (self.bounced and self.age > 0.15)) then
+    if not p.dead and not (self.hitSet and self.hitSet[p])
+        and (p ~= self.owner or (self.bounced and self.age > 0.15)) then
       local dx, dy = p.x - self.x, p.y - self.y
       local reach = p.r + r
       if p:isBlocking() then reach = p.r + 14 + r end
@@ -295,6 +328,7 @@ function Bullet:spawnFragments(game)
     f.isFragment = true
     f.splitsLeft = 0
     f.sticky = 0
+    f.shrapnel, f.cluster, f.hydra = 0, 0, 0
     f.damage = self.damage * 0.5
     f.r = math.max(2.5, self.r * 0.7)
     f.bounces = 0
@@ -350,12 +384,14 @@ function Bullet:hitPlayer(p, game)
     return
   end
 
-  self.dead = true
+  local o = self.owner
+  local os = o.stats
   local dmg = self:currentDamage()
   if self.phased and self.ghostLevel > 1 then dmg = dmg * extra(self.ghostLevel, 0.25) end
-  local landed = p:hit(dmg, self.vx, self.vy, self.knockback)
+  if os.execute > 0 and p.hp < p.stats.maxHp * 0.35 then dmg = dmg * (1 + 0.5 * os.execute) end
+  if os.combo > 0 and o.comboCount > 0 then dmg = dmg * (1 + 0.1 * os.combo * math.min(5, o.comboCount)) end
+  local landed = p:hit(dmg, self.vx, self.vy, self.knockback, o)
   if landed then
-    local o = self.owner
     if self.lifesteal > 0 then o:heal(dmg * self.lifesteal) end
     if self.poison > 0 then p:poisonFor(dmg * self.poison, 3) end
     if self.frost > 0 then p.slowTimer = math.max(p.slowTimer, self.frost) end
@@ -364,11 +400,39 @@ function Bullet:hitPlayer(p, game)
       o.reloadTimer = 0
     end
     if self.crit then fx.burst(p.x, p.y, CRIT_COLOR, 14, 300, 4) end
+    if os.combo > 0 then
+      o.comboCount = o.comboCount + 1
+      o.comboTimer = 2
+    end
+    if os.swap > 0 and o.swapCd <= 0 and not o.dead and not p.dead and o ~= p then
+      -- Swap Shot: trade places with the target.
+      fx.burst(o.x, o.y, o.color, 14, 220, 3)
+      fx.burst(p.x, p.y, p.color, 14, 220, 3)
+      o.x, o.y, p.x, p.y = p.x, p.y, o.x, o.y
+      o.vx, o.vy, p.vx, p.vy = 0, 0, 0, 0
+      o.swapCd = 1.5 * 0.7 ^ (os.swap - 1)
+    end
+    if self.hydra > 0 and not self.isChild then
+      for _ = 1, 2 + (self.hydra - 1) do
+        local a = love.math.random() * math.pi * 2
+        self:spawnChild(game, p.x + math.cos(a) * (p.r + 12), p.y + math.sin(a) * (p.r + 12), a, 700, dmg * 0.35, p)
+      end
+    end
   end
-  self:impact(game)
+
+  -- Piercing Rounds / Railgun: keep going through this player.
+  if self.pierce > 0 then
+    self.pierce = self.pierce - 1
+    self.hitSet = self.hitSet or {}
+    self.hitSet[p] = true
+    return
+  end
+  self.dead = true
+  self:impact(game, p)
 end
 
-function Bullet:impact(game)
+-- hitPlayer: the player this bullet just hit (shards don't hit them again).
+function Bullet:impact(game, hitPlayer)
   if self.blackhole > 0 then
     -- Extra Black Hole copies: +30% pull radius and strength each.
     local mult = extra(self.blackhole, 0.3)
@@ -376,6 +440,14 @@ function Bullet:impact(game)
       x = self.x, y = self.y, t = 1.4, max = 1.4, owner = self.owner,
       radius = WELL_RADIUS * mult, strength = WELL_STRENGTH * mult,
     })
+  end
+  if self.shrapnel > 0 and not self.isChild then
+    local n = 4 * self.shrapnel
+    for i = 1, n do
+      local a = (i + love.math.random() * 0.6) / n * math.pi * 2
+      local shard = self:spawnChild(game, self.x, self.y, a, 600, self.damage * 0.25, hitPlayer)
+      shard.life = 0.5
+    end
   end
   self:explode(game)
 end
@@ -391,8 +463,23 @@ function Bullet:explode(game, mult)
       local dx, dy = p.x - self.x, p.y - self.y
       local d = math.sqrt(dx * dx + dy * dy)
       if d < self.explosion + p.r then
-        p:hit(dmg, dx, dy, self.knockback * 1.5)
+        p:hit(dmg, dx, dy, self.knockback * 1.5, self.owner)
       end
+    end
+  end
+
+  -- Cluster Bombs: mini blasts around the main one.
+  if self.cluster > 0 and not self.isCluster then
+    local n = 3 + 2 * (self.cluster - 1)
+    local radius = self.explosion
+    for i = 1, n do
+      local a = (i + love.math.random() * 0.5) / n * math.pi * 2
+      local c = self:clone()
+      c.isCluster = true
+      c.x, c.y = self.x + math.cos(a) * radius * 0.9, self.y + math.sin(a) * radius * 0.9
+      c.explosion = radius * 0.5
+      c.damage = self.damage * 0.4
+      c:explode(game, mult)
     end
   end
 end

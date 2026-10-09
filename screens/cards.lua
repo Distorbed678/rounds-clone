@@ -123,7 +123,7 @@ function Screen:draw()
     pages = self:pageCount(#cards)
   end
   if pages > 1 then
-    d = ui.cycler("Page", self.page .. " / " .. pages, 640, 26, 170, 40)
+    d = ui.cycler("Page", self.page .. " / " .. pages, 640, 26, 190, 40)
     if d ~= 0 then self.page = cycle(self.page, pages, d) end
   end
 

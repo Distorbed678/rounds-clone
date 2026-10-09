@@ -239,8 +239,8 @@ function Match:newProxy(slot, name)
   return setmetatable({
     id = slot, slot = slot, name = name, color = World.COLORS[slot],
     cards = {}, score = 0,
-    stats = { maxHp = 100, ammo = 3, reloadTime = 1, blockCooldown = 1, orbs = 0, stasis = 0 },
-    vote = 0,
+    stats = { maxHp = 100, ammo = 3, reloadTime = 1, blockCooldown = 1, orbs = 0, stasis = 0, sentry = 0 },
+    vote = 0, shield = 0,
     decay = { { remaining = 0 } },
     x = -1000, y = -1000, r = 20, aimX = 1, aimY = 0, facing = 1,
     hp = 100, ammo = 3, reloadTimer = 0, blockTimer = 0, blockCd = 0,
@@ -290,6 +290,8 @@ function Match:applySnapshot(v)
     local s = p.stats
     s.maxHp, s.ammo, s.orbs, s.stasis = pv.maxHp, pv.maxAmmo, pv.orbs, pv.stasis
     p.vote = pv.vote
+    p.shield = pv.shield
+    s.sentry = pv.sentry
   end
 
   local views, list = {}, {}
@@ -783,7 +785,7 @@ function Match:draw()
     fx.draw()
   end, app.canvas)
 
-  hud.drawScores(players, st.winScore)
+  local cardItems = hud.drawScores(players, st.winScore)
   love.graphics.setFont(app.fonts.small)
   love.graphics.setColor(1, 1, 1, 0.3)
   love.graphics.printf(map.name .. "   -   First to " .. st.winScore, 0, app.H - 24, app.W, "center")
@@ -805,6 +807,13 @@ function Match:draw()
     self:drawCardPick(st)
   elseif st.state == "matchOver" then
     self:drawMatchOver(st)
+  end
+
+  -- Hovering a card name in someone's score panel shows what it does.
+  if not self.paused then
+    local mx, my = app.mouse()
+    local item = hud.cardAt(cardItems, mx, my)
+    if item then hud.drawCardTooltip(item) end
   end
 
   if self.paused then

@@ -15,6 +15,9 @@ local WALL_SLIDE = 120
 local ORB_DISTANCE = 55
 local ORB_SIZE = 9
 local SHOCKWAVE_RADIUS = 170
+local STATIC_RADIUS = 130
+local SENTRY_DELAY = 0.9
+local ARENA_W, ARENA_H = 1280, 720
 
 local BASE = {
   maxHp = 100, radius = 20,
@@ -33,6 +36,12 @@ local BASE = {
   recoil = 0, frost = 0, ghost = 0, burst = 0, spinup = 0, crit = 0, sticky = 0,
   orbs = 0, berserk = 0, martyr = 0, repel = 0, backShot = 0, blackhole = 0,
   underdog = 0, scavenger = 0, laser = 0, knockbackImmune = false, stasis = 0,
+  -- v0.3 cards
+  armor = 0, regen = 0, lastRound = 0, thorns = 0, spite = 0, execute = 0, combo = 0,
+  sprintBlock = 0, frostback = 0, mineLayer = 0, static = 0, quickdraw = 0, pierce = 0,
+  shrapnel = 0, seek = 0, lastStand = 0, lockLoad = 0, momentum = 0, reloadNova = 0,
+  adrenaline = 0, gravityBlock = 0, swap = 0, cluster = 0, shieldMax = 0, timeWarp = 0,
+  hydra = 0, sentry = 0, mirror = 0, railgun = 0,
 }
 
 Player.stasisRadius = Bullet.stasisRadius
@@ -62,6 +71,7 @@ function Player:recompute()
   s.bullets = math.max(1, math.floor(s.bullets + 0.5))
   s.crit = math.min(0.9, s.crit)
   s.orbs = math.min(8, s.orbs)
+  s.radius = math.max(10, s.radius)
   self.stats = s
   self.r = s.radius
 end
@@ -104,6 +114,17 @@ function Player:spawn(x, y, facing, game)
   self.burstLeft, self.burstTimer = 0, 0
   self.orbAngle = 0
   self.orbHit = {}
+  self.shield = self.stats.shieldMax
+  self.lastStandLeft = self.stats.lastStand
+  self.spiteReady = false
+  self.quickdrawReady = false
+  self.comboCount, self.comboTimer = 0, 0
+  self.sprintTimer = 0
+  self.freeAmmo = 0
+  self.warpTimer = 0
+  self.swapCd = 0
+  self.sentryTimer = 1
+  self.staticTimer = 0
   self.seenJump = self.input.jumpCount
   self.seenBlock = self.input.blockCount
   self.jumpWasHeld = self.input.jumpHeld
@@ -111,6 +132,16 @@ end
 
 function Player:isBlocking()
   return self.blockTimer > 0
+end
+
+-- Where the Sentry turret hovers (behind the player's shoulder).
+function Player:sentryPos()
+  return self.x - self.facing * (self.r + 16), self.y - self.r - 14
+end
+
+-- Adrenaline is active below half HP.
+function Player:adrenalineActive()
+  return self.stats.adrenaline > 0 and self.hp < self.stats.maxHp * 0.5
 end
 
 function Player:orbPos(i)
@@ -130,6 +161,14 @@ function Player:update(dt, frozen)
   self.invuln = math.max(0, self.invuln - dt)
   self.slowTimer = math.max(0, self.slowTimer - dt)
   self.cloakTimer = math.max(0, self.cloakTimer - dt)
+  self.sprintTimer = math.max(0, self.sprintTimer - dt)
+  self.freeAmmo = math.max(0, self.freeAmmo - dt)
+  self.warpTimer = math.max(0, self.warpTimer - dt)
+  self.swapCd = math.max(0, self.swapCd - dt)
+  if self.comboTimer > 0 then
+    self.comboTimer = self.comboTimer - dt
+    if self.comboTimer <= 0 then self.comboCount = 0 end
+  end
   self.sinceShot = self.sinceShot + dt
 
   -- Reload when empty, or top up after a short pause in firing.
@@ -138,6 +177,7 @@ function Player:update(dt, frozen)
     if self.reloadTimer <= 0 then
       self.reloadTimer = 0
       self.ammo = s.ammo
+      self:reloaded()
     end
   elseif self.ammo < s.ammo and self.sinceShot > 1.0 then
     self.reloadTimer = s.reloadTime
@@ -158,6 +198,7 @@ function Player:update(dt, frozen)
     self.hp = self.hp - amount
     if d.remaining <= 0 then table.remove(self.decay, i) end
   end
+  if s.regen > 0 and self.hp > 0 then self.hp = math.min(s.maxHp, self.hp + s.regen * dt) end
   if self.hp <= 0 then
     self:die()
     if self.dead then return end
@@ -188,6 +229,8 @@ function Player:update(dt, frozen)
   end
   if dir ~= 0 and self.controlLock <= 0 and not inp.aim then self.facing = dir end
   local speed = s.speed * (self.slowTimer > 0 and 0.5 or 1)
+  if self.sprintTimer > 0 then speed = speed * (1 + 0.4 * s.sprintBlock) end
+  if self:adrenalineActive() then speed = speed * (1 + 0.2 * s.adrenaline) end
   local accel = self.onGround and 4000 or 2200
   if self.controlLock > 0 then accel = 600 end
   self.vx = approach(self.vx, dir * speed, accel * dt)
@@ -256,6 +299,10 @@ function Player:update(dt, frozen)
   end
 
   if s.orbs > 0 then self:updateOrbs(dt) end
+  if not frozen then
+    if s.static > 0 then self:updateStatic(dt) end
+    if s.sentry > 0 then self:updateSentry(dt) end
+  end
 
   if self.y > 820 or self.x < -150 or self.x > 1430 then self:die(true) end
 end
@@ -281,12 +328,61 @@ function Player:updateOrbs(dt)
         local dx, dy = enemy.x - ox, enemy.y - oy
         local reach = ORB_SIZE + enemy.r
         if dx * dx + dy * dy < reach * reach then
-          enemy:hit(10, enemy.x - self.x, enemy.y - self.y, 300)
+          enemy:hit(10, enemy.x - self.x, enemy.y - self.y, 300, self)
           self.orbHit[i] = 0.5
           break
         end
       end
     end
+  end
+end
+
+-- Static Field: enemies close by take damage over time (pulses a ring so it's visible online).
+function Player:updateStatic(dt)
+  local s = self.stats
+  self.staticTimer = self.staticTimer - dt
+  if self.staticTimer <= 0 then
+    self.staticTimer = 0.8
+    fx.ring(self.x, self.y, STATIC_RADIUS, { 0.55, 0.8, 1 })
+  end
+  for _, e in ipairs(self.game:enemiesOf(self)) do
+    local dx, dy = e.x - self.x, e.y - self.y
+    local reach = STATIC_RADIUS + e.r
+    if dx * dx + dy * dy < reach * reach and e.invuln <= 0 and not e:isBlocking() then
+      e.hp = e.hp - s.static * dt
+      if e.hp <= 0 then e:die() end
+    end
+  end
+end
+
+-- Sentry: a turret that shoots the nearest visible enemy.
+function Player:updateSentry(dt)
+  local s, game = self.stats, self.game
+  self.sentryTimer = self.sentryTimer - dt
+  if self.sentryTimer > 0 then return end
+  local sx, sy = self:sentryPos()
+  local target = game:nearestEnemy(self, sx, sy, true)
+  if not target then
+    self.sentryTimer = 0.2
+    return
+  end
+  self.sentryTimer = SENTRY_DELAY / (1 + 0.5 * (s.sentry - 1))
+  local dx, dy = target.x - sx, target.y - sy
+  local d = math.max(1, math.sqrt(dx * dx + dy * dy))
+  local b = Bullet.new(self, sx, sy, dx / d * s.bulletSpeed, dy / d * s.bulletSpeed)
+  b.damage = b.damage * 0.4
+  b.r = math.max(2.5, b.r * 0.7)
+  b.gravity = 0
+  game:addBullet(b)
+  fx.burst(sx, sy, self.color, 3, 100, 2)
+end
+
+-- A reload just finished.
+function Player:reloaded()
+  local s = self.stats
+  if s.quickdraw > 0 then self.quickdrawReady = true end
+  for i = 1, s.reloadNova do
+    self:spawnBullet(i / s.reloadNova * math.pi * 2, 0.8, false)
   end
 end
 
@@ -377,6 +473,25 @@ function Player:blockPressed()
   end
   if s.cloak > 0 then self.cloakTimer = s.cloak end
   if s.blink > 0 then self:blink(s.blink) end
+  if s.sprintBlock > 0 then self.sprintTimer = 2 end
+  if s.lockLoad > 0 then self.freeAmmo = 1.5 + (s.lockLoad - 1) end
+  if s.timeWarp > 0 then
+    self.warpTimer = 1.5 + (s.timeWarp - 1)
+    fx.ring(self.x, self.y, 140, { 0.65, 0.5, 1 })
+  end
+  if s.gravityBlock > 0 then
+    local mult = 1 + 0.3 * (s.gravityBlock - 1)
+    table.insert(game.wells, {
+      x = self.x, y = self.y, t = 1.4, max = 1.4, owner = self, radius = 280 * mult, strength = 3200 * mult,
+    })
+  end
+  for i = 1, s.mineLayer do
+    local m = Bullet.new(self, self.x + (i - (s.mineLayer + 1) / 2) * 22, self.y + self.r - 6, 0, 0)
+    m.laser = false
+    m:becomeMine()
+    m.armTime = 0.8
+    game:addBullet(m)
+  end
 
   if s.shockwave > 0 then
     fx.ring(self.x, self.y, SHOCKWAVE_RADIUS, self.color)
@@ -384,7 +499,7 @@ function Player:blockPressed()
     for _, e in ipairs(game:enemiesOf(self)) do
       local dx, dy = e.x - self.x, e.y - self.y
       local reach = SHOCKWAVE_RADIUS + e.r
-      if dx * dx + dy * dy < reach * reach then e:hit(15 * s.shockwave, dx, dy, 650) end
+      if dx * dx + dy * dy < reach * reach then e:hit(15 * s.shockwave, dx, dy, 650, self) end
     end
     for _, b in ipairs(game.bullets) do
       if b.owner ~= self and not b.laser then
@@ -427,12 +542,27 @@ function Player:tryFire()
     self.spin = math.min(1, self.spin + 0.12 * s.spinup)
     delay = delay / (1 + 2 * self.spin)
   end
-  self.ammo = self.ammo - 1
+  if self:adrenalineActive() then delay = delay / (1 + 0.4 * s.adrenaline) end
+
+  -- One-shot damage bonuses for this volley.
+  local mult = 1
+  local free = self.freeAmmo > 0 -- Lock and Load
+  if s.lastRound > 0 and self.ammo == 1 and not free then mult = mult * (1 + s.lastRound) end
+  if self.quickdrawReady then
+    mult = mult * (1 + 0.5 * s.quickdraw)
+    self.quickdrawReady = false
+  end
+  if self.spiteReady and s.spite > 0 then
+    mult = mult * (1 + 0.6 * s.spite)
+    self.spiteReady = false
+  end
+
+  if not free then self.ammo = self.ammo - 1 end
   self.fireTimer = delay
   self.sinceShot = 0
   self.reloadTimer = (self.ammo == 0) and s.reloadTime or 0
 
-  self:volley(true)
+  self:volley(true, mult)
   if s.burst > 0 then
     self.burstLeft = s.burst
     self.burstTimer = 0.09
@@ -440,7 +570,8 @@ function Player:tryFire()
 end
 
 -- Fire one volley (all pellets). Echo repeats call this with primary = false.
-function Player:volley(primary)
+-- mult: one-shot damage multiplier (Last Round, Quickdraw, Spite).
+function Player:volley(primary, mult)
   local s = self.stats
   local empowered = primary and self.empowered
   if empowered then
@@ -453,10 +584,10 @@ function Player:volley(primary)
     local t = s.bullets > 1 and ((i - 1) / (s.bullets - 1) - 0.5) or 0
     local ang = base + t * s.spread + (love.math.random() - 0.5) * s.spread * 0.3
     local speedMul = s.bullets > 1 and (0.9 + love.math.random() * 0.2) or 1
-    self:spawnBullet(ang, speedMul, empowered)
+    self:spawnBullet(ang, speedMul, empowered, mult)
   end
   for i = 1, s.backShot do
-    self:spawnBullet(base + math.pi + (i - (s.backShot + 1) / 2) * 0.18, 1, empowered)
+    self:spawnBullet(base + math.pi + (i - (s.backShot + 1) / 2) * 0.18, 1, empowered, mult)
   end
 
   fx.burst(self.x + self.aimX * (self.r + 12), self.y + self.aimY * (self.r + 12), { 1, 0.95, 0.7 }, 4, 150, 2)
@@ -469,7 +600,7 @@ function Player:volley(primary)
   end
 end
 
-function Player:spawnBullet(ang, speedMul, empowered)
+function Player:spawnBullet(ang, speedMul, empowered, mult)
   local s, game = self.stats, self.game
   local speed = s.bulletSpeed * (speedMul or 1)
   local bx = self.x + math.cos(ang) * (self.r + 8)
@@ -496,8 +627,27 @@ function Player:spawnBullet(ang, speedMul, empowered)
     b.r = b.r * 1.5
     b.vx, b.vy = b.vx * 1.2, b.vy * 1.2
   end
+  if mult and mult ~= 1 then b.damage = b.damage * mult end
+  if s.momentum > 0 then
+    local frac = math.min(1, math.abs(self.vx) / math.max(1, s.speed))
+    b.damage = b.damage * (1 + 0.5 * s.momentum * frac)
+  end
   if s.crit > 0 and love.math.random() < s.crit then b:makeCrit() end
   game:addBullet(b)
+  if s.mirror > 0 then self:mirrorBullet(b) end
+end
+
+-- Mirror Shot: copies of a bullet from the mirrored side(s) of the arena.
+local MIRRORS = { { true, false }, { false, true }, { true, true } }
+function Player:mirrorBullet(b)
+  local s, game = self.stats, self.game
+  if s.mirror > 3 then b.damage = b.damage * (1 + 0.15 * (s.mirror - 3)) end
+  for i = 1, math.min(3, s.mirror) do
+    local c = b:clone()
+    if MIRRORS[i][1] then c.x, c.vx = ARENA_W - c.x, -c.vx end
+    if MIRRORS[i][2] then c.y, c.vy = ARENA_H - c.y, -c.vy end
+    if not Map.hit(game.map.rects, c.x - c.r, c.y - c.r, c.r * 2, c.r * 2) then game:addBullet(c) end
+  end
 end
 
 -- An attack hit our block. Parry recharges the block; extra copies also heal.
@@ -510,7 +660,8 @@ function Player:blocked()
 end
 
 -- Returns true if damage landed (false when blocked, invulnerable or already dead).
-function Player:hit(amount, dx, dy, knock)
+-- source: the player who caused it (for Thorns and Frostback), or nil.
+function Player:hit(amount, dx, dy, knock, source)
   if self.dead then return false end
   if self:isBlocking() then
     fx.burst(self.x, self.y, { 1, 1, 1 }, 8, 200, 3)
@@ -519,11 +670,30 @@ function Player:hit(amount, dx, dy, knock)
   end
   if self.invuln > 0 then return false end
 
-  if self.stats.decay > 0 then
-    local duration = 4 + 2 * (self.stats.decay - 1)
+  local s = self.stats
+  local taken = amount
+  if s.armor > 0 then amount = math.max(amount * 0.25, amount - s.armor) end
+  if self.shield > 0 then
+    local absorbed = math.min(self.shield, amount)
+    self.shield = self.shield - absorbed
+    amount = amount - absorbed
+    fx.burst(self.x, self.y, { 0.5, 0.8, 1 }, 6, 160, 3)
+  end
+
+  if s.decay > 0 then
+    local duration = 4 + 2 * (s.decay - 1)
     table.insert(self.decay, { remaining = amount, rate = amount / duration })
   else
     self.hp = self.hp - amount
+  end
+  if s.spite > 0 then self.spiteReady = true end
+  if source and source ~= self and not source.dead then
+    if s.frostback > 0 then source.slowTimer = math.max(source.slowTimer, s.frostback) end
+    if s.thorns > 0 and source.invuln <= 0 then
+      source.hp = source.hp - taken * s.thorns
+      source.hitFlash = 0.1
+      if source.hp <= 0 then source:die() end
+    end
   end
   self.hitFlash = 0.1
   fx.burst(self.x, self.y, self.color, 10, 220, 4)
@@ -551,6 +721,19 @@ end
 
 function Player:die(outOfBounds)
   if self.dead then return end
+
+  -- Last Stand: shrug off a lethal hit (not falling out of the arena).
+  if (self.lastStandLeft or 0) > 0 and not outOfBounds then
+    self.lastStandLeft = self.lastStandLeft - 1
+    self.hp = 1
+    self.poisonTimer = 0
+    self.decay = {}
+    self.invuln = 1
+    fx.ring(self.x, self.y, 70, { 1, 1, 1 })
+    fx.burst(self.x, self.y, { 1, 0.95, 0.6 }, 20, 300, 4)
+    return
+  end
+
   fx.burst(self.x, self.y, self.color, 40, 450, 6)
   fx.addShake(12)
 
@@ -582,7 +765,7 @@ function Player:die(outOfBounds)
     for _, e in ipairs(self.game:enemiesOf(self)) do
       local dx, dy = e.x - self.x, e.y - self.y
       if math.sqrt(dx * dx + dy * dy) < radius + e.r then
-        e:hit(60 * self.stats.martyr, dx, dy, 800)
+        e:hit(60 * self.stats.martyr, dx, dy, 800, self)
       end
     end
   end
@@ -644,6 +827,22 @@ function Player:draw()
     love.graphics.setLineWidth(2)
     local frac = 1 - self.blockCd / s.blockCooldown
     love.graphics.arc("line", "open", self.x, self.y, r + 7, -math.pi / 2, -math.pi / 2 + math.pi * 2 * frac)
+  end
+
+  -- Shield Generator bubble
+  if (self.shield or 0) > 0 then
+    love.graphics.setColor(0.5, 0.8, 1, (0.25 + 0.35 * math.min(1, self.shield / 60)) * A)
+    love.graphics.setLineWidth(2)
+    love.graphics.circle("line", self.x, self.y, r + 5)
+  end
+
+  -- Sentry turret
+  if (s.sentry or 0) > 0 then
+    local sx, sy = self:sentryPos()
+    love.graphics.setColor(0.85, 0.85, 0.9, A)
+    love.graphics.rectangle("fill", sx - 7, sy - 5, 14, 10, 3, 3)
+    love.graphics.setColor(c[1], c[2], c[3], A)
+    love.graphics.circle("fill", sx, sy, 3.5)
   end
 
   for i = 1, s.orbs do

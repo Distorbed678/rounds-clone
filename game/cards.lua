@@ -74,20 +74,9 @@ Cards.list = {
     apply = function(s) s.blockHeal = s.blockHeal + 15 end,
   },
   {
-    name = "Supply Drop", rarity = "common", block = true,
-    lines = { "+blocking instantly reloads", "-10% block cooldown" },
-    stack = "+1 bonus round above max ammo per extra copy",
-    apply = function(s) s.blockReload = s.blockReload + 1; s.blockCooldown = s.blockCooldown * 0.9 end,
-  },
-  {
     name = "Rocket Jump", rarity = "common",
     lines = { "+shooting blasts you backwards", "+aim down to fly" },
     apply = function(s) s.recoil = s.recoil + 450 end,
-  },
-  {
-    name = "Lucky Shot", rarity = "common",
-    lines = { "+20% chance to crit", "+crits deal 3x damage" },
-    apply = function(s) s.crit = s.crit + 0.2 end,
   },
   {
     name = "Moon Shoes", rarity = "common",
@@ -95,18 +84,105 @@ Cards.list = {
     apply = function(s) s.gravityMul = s.gravityMul * 0.55; s.jump = s.jump * 0.8 end,
   },
   {
-    name = "Rear Guard", rarity = "common",
-    lines = { "+also fires a shot behind you" },
-    stack = "+1 back shot per copy",
-    apply = function(s) s.backShot = s.backShot + 1 end,
-  },
-  {
     name = "Scavenger", rarity = "common",
     lines = { "+hits refund 1 ammo", "+hits cancel your reload" },
     apply = function(s) s.scavenger = s.scavenger + 1 end,
   },
+  {
+    name = "Glass Cannon", rarity = "common",
+    lines = { "+100% damage", "-50% HP" },
+    apply = function(s) s.damage = s.damage * 2; s.maxHp = s.maxHp * 0.5 end,
+  },
+  {
+    name = "Sharpshooter", rarity = "common",
+    lines = { "+40% bullet speed", "+50% less spread", "+10% damage" },
+    apply = function(s) s.bulletSpeed = s.bulletSpeed * 1.4; s.spread = s.spread * 0.5; s.damage = s.damage * 1.1 end,
+  },
+  {
+    name = "Wide Shot", rarity = "common",
+    lines = { "+2 bullets per shot", "+wider spread", "-30% damage" },
+    apply = function(s) s.bullets = s.bullets + 2; s.spread = s.spread + 0.3; s.damage = s.damage * 0.7 end,
+  },
+  {
+    name = "Featherweight", rarity = "common",
+    lines = { "+25% less gravity on you", "+15% move speed", "-20 HP" },
+    apply = function(s) s.gravityMul = s.gravityMul * 0.75; s.speed = s.speed * 1.15; s.maxHp = s.maxHp - 20 end,
+  },
+  {
+    name = "Thick Skin", rarity = "common",
+    lines = { "+30 HP", "+take 3 less damage from every hit" },
+    apply = function(s) s.maxHp = s.maxHp + 30; s.armor = s.armor + 3 end,
+  },
+  {
+    name = "Quick Hands", rarity = "common",
+    lines = { "+33% fire rate" },
+    apply = function(s) s.fireDelay = s.fireDelay * 0.75 end,
+  },
+  {
+    name = "Extended Barrel", rarity = "common",
+    lines = { "+1 ammo", "+20% bullet speed" },
+    apply = function(s) s.ammo = s.ammo + 1; s.bulletSpeed = s.bulletSpeed * 1.2 end,
+  },
+  {
+    name = "Rubber Bullets", rarity = "common",
+    lines = { "+1 bullet bounce", "+60% knockback", "-10% damage" },
+    apply = function(s) s.bounces = s.bounces + 1; s.knockback = s.knockback * 1.6; s.damage = s.damage * 0.9 end,
+  },
+  {
+    name = "Bulwark", rarity = "common", block = true,
+    lines = { "+longer block", "-15% block cooldown", "+20 HP" },
+    apply = function(s) s.blockTime = s.blockTime + 0.1; s.blockCooldown = s.blockCooldown * 0.85; s.maxHp = s.maxHp + 20 end,
+  },
+  {
+    name = "Spring Legs", rarity = "common",
+    lines = { "+15% jump power" },
+    apply = function(s) s.jump = s.jump * 1.15 end,
+  },
+  {
+    name = "Steady Aim", rarity = "common",
+    lines = { "+60% less spread", "+15% damage", "-10% fire rate" },
+    apply = function(s) s.spread = s.spread * 0.4; s.damage = s.damage * 1.15; s.fireDelay = s.fireDelay * 1.1 end,
+  },
+  {
+    name = "Hollow Points", rarity = "common",
+    lines = { "+25% damage", "-15% bullet speed" },
+    apply = function(s) s.damage = s.damage * 1.25; s.bulletSpeed = s.bulletSpeed * 0.85 end,
+  },
+  {
+    name = "Light Rounds", rarity = "common",
+    lines = { "+50% less bullet drop", "+15% bullet speed" },
+    apply = function(s) s.bulletGravity = s.bulletGravity * 0.5; s.bulletSpeed = s.bulletSpeed * 1.15 end,
+  },
+  {
+    name = "Regeneration", rarity = "common",
+    lines = { "+heal 3 HP per second" },
+    apply = function(s) s.regen = s.regen + 3 end,
+  },
+  {
+    name = "Small Frame", rarity = "common",
+    lines = { "+smaller body (harder to hit)", "+10% move speed", "-15 HP" },
+    apply = function(s) s.radius = s.radius - 3; s.speed = s.speed * 1.1; s.maxHp = s.maxHp - 15 end,
+  },
+  {
+    name = "Last Round", rarity = "common",
+    lines = { "+the last bullet in your magazine deals +100% damage" },
+    stack = "+100% more per extra copy",
+    apply = function(s) s.lastRound = s.lastRound + 1 end,
+  },
 
   ---------------------------------------------------------------- Uncommon
+  {
+    name = "Supply Drop", rarity = "uncommon", block = true,
+    lines = { "+blocking instantly reloads", "-10% block cooldown" },
+    stack = "+1 bonus round above max ammo per extra copy",
+    apply = function(s) s.blockReload = s.blockReload + 1; s.blockCooldown = s.blockCooldown * 0.9 end,
+  },
+  {
+    name = "Rear Guard", rarity = "uncommon",
+    lines = { "+also fires a shot behind you" },
+    stack = "+1 back shot per copy",
+    apply = function(s) s.backShot = s.backShot + 1 end,
+  },
   {
     name = "Buckshot", rarity = "uncommon",
     lines = { "+4 bullets per shot", "+wide spread", "-55% damage" },
@@ -116,11 +192,6 @@ Cards.list = {
     name = "Tank", rarity = "uncommon",
     lines = { "+100 HP", "+bigger body", "-15% move speed" },
     apply = function(s) s.maxHp = s.maxHp + 100; s.radius = s.radius + 5; s.speed = s.speed * 0.85 end,
-  },
-  {
-    name = "Glass Cannon", rarity = "uncommon",
-    lines = { "+100% damage", "-50% HP" },
-    apply = function(s) s.damage = s.damage * 2; s.maxHp = s.maxHp * 0.5 end,
   },
   {
     name = "Leech", rarity = "uncommon",
@@ -156,11 +227,6 @@ Cards.list = {
     apply = function(s) s.cloak = s.cloak + 1.5 end,
   },
   {
-    name = "Trickster", rarity = "uncommon",
-    lines = { "+1 bullet bounce", "+60% damage per bounce" },
-    apply = function(s) s.bounces = s.bounces + 1; s.bounceDamage = s.bounceDamage + 0.6 end,
-  },
-  {
     name = "Rocket", rarity = "uncommon",
     lines = { "+bullets accelerate in flight", "+25% damage", "-launch slowly" },
     apply = function(s) s.bulletSpeed = s.bulletSpeed * 0.45; s.accel = s.accel + 2200; s.damage = s.damage * 1.25 end,
@@ -169,12 +235,6 @@ Cards.list = {
     name = "Frost", rarity = "uncommon",
     lines = { "+hits slow the enemy by 50% for 2s" },
     apply = function(s) s.frost = s.frost + 2 end,
-  },
-  {
-    name = "Overclock", rarity = "uncommon",
-    lines = { "+fire rate ramps up to 3x while you hold fire" },
-    stack = "ramps up faster and cools down slower per copy",
-    apply = function(s) s.spinup = s.spinup + 1 end,
   },
   {
     name = "Berserker", rarity = "uncommon",
@@ -187,21 +247,89 @@ Cards.list = {
     apply = function(s) s.martyr = s.martyr + 1 end,
   },
   {
-    name = "Repulsor", rarity = "uncommon",
-    lines = { "+enemy bullets curve away from you" },
-    apply = function(s) s.repel = s.repel + 1 end,
-  },
-  {
     name = "Underdog", rarity = "uncommon",
     lines = { "+20% damage per point you're behind" },
     apply = function(s) s.underdog = s.underdog + 1 end,
   },
   {
-    name = "Reroll", rarity = "uncommon", special = "reroll",
-    lines = { "Reroll these cards" },
+    name = "Reflector", rarity = "uncommon", block = true,
+    lines = { "+bullets you block come back as 1 extra bullet" },
+    stack = "+1 extra reflected bullet per copy",
+    apply = function(s) s.reflect = s.reflect + 1 end,
+  },
+  {
+    name = "Parry", rarity = "uncommon", block = true,
+    lines = { "+blocking an attack instantly recharges your block" },
+    stack = "parries heal 10 HP per extra copy",
+    apply = function(s) s.parry = s.parry + 1 end,
+  },
+  {
+    name = "Thorns", rarity = "uncommon",
+    lines = { "+enemies that hit you take 25% of the damage back" },
+    stack = "+25% per copy",
+    apply = function(s) s.thorns = s.thorns + 0.25 end,
+  },
+  {
+    name = "Spite", rarity = "uncommon",
+    lines = { "+after you take damage, your next shot deals +60% damage" },
+    stack = "+60% per copy",
+    apply = function(s) s.spite = s.spite + 1 end,
+  },
+  {
+    name = "Executioner", rarity = "uncommon",
+    lines = { "+50% damage to enemies below 35% HP" },
+    stack = "+50% per copy",
+    apply = function(s) s.execute = s.execute + 1 end,
+  },
+  {
+    name = "Combo", rarity = "uncommon",
+    lines = { "+each hit within 2s of your last adds +10% damage (up to 5 hits)" },
+    stack = "+10% per hit per copy",
+    apply = function(s) s.combo = s.combo + 1 end,
+  },
+  {
+    name = "Sprint Block", rarity = "uncommon", block = true,
+    lines = { "+blocking gives +40% move speed for 2s" },
+    stack = "+40% speed per copy",
+    apply = function(s) s.sprintBlock = s.sprintBlock + 1 end,
+  },
+  {
+    name = "Frostback", rarity = "uncommon",
+    lines = { "+enemies that hit you are slowed for 1.5s" },
+    stack = "+1.5s per copy",
+    apply = function(s) s.frostback = s.frostback + 1.5 end,
+  },
+  {
+    name = "Mine Layer", rarity = "uncommon", block = true,
+    lines = { "+blocking drops a mine at your feet" },
+    stack = "+1 mine per copy",
+    apply = function(s) s.mineLayer = s.mineLayer + 1 end,
+  },
+  {
+    name = "Static Field", rarity = "uncommon",
+    lines = { "+enemies near you take 8 damage per second" },
+    stack = "+8 damage per second per copy",
+    apply = function(s) s.static = s.static + 8 end,
+  },
+  {
+    name = "Quickdraw", rarity = "uncommon",
+    lines = { "+your first shot after a reload deals +50% damage" },
+    stack = "+50% per copy",
+    apply = function(s) s.quickdraw = s.quickdraw + 1 end,
   },
 
   ---------------------------------------------------------------- Rare
+  {
+    name = "Trickster", rarity = "rare",
+    lines = { "+1 bullet bounce", "+60% damage per bounce" },
+    apply = function(s) s.bounces = s.bounces + 1; s.bounceDamage = s.bounceDamage + 0.6 end,
+  },
+  {
+    name = "Overclock", rarity = "rare",
+    lines = { "+fire rate ramps up to 3x while you hold fire" },
+    stack = "ramps up faster and cools down slower per copy",
+    apply = function(s) s.spinup = s.spinup + 1 end,
+  },
   {
     name = "Explosive", rarity = "rare",
     lines = { "+bullets explode", "-25% fire rate" },
@@ -218,26 +346,9 @@ Cards.list = {
     apply = function(s) s.bounces = s.bounces + 5; s.damage = s.damage * 0.85 end,
   },
   {
-    name = "Reflector", rarity = "rare", block = true,
-    lines = { "+bullets you block come back as 1 extra bullet" },
-    stack = "+1 extra reflected bullet per copy",
-    apply = function(s) s.reflect = s.reflect + 1 end,
-  },
-  {
     name = "Blink", rarity = "rare", block = true,
     lines = { "+blocking teleports you where you aim" },
     apply = function(s) s.blink = s.blink + 220 end,
-  },
-  {
-    name = "Parry", rarity = "rare", block = true,
-    lines = { "+blocking an attack instantly recharges your block" },
-    stack = "parries heal 10 HP per extra copy",
-    apply = function(s) s.parry = s.parry + 1 end,
-  },
-  {
-    name = "Nova", rarity = "rare", block = true,
-    lines = { "+blocking fires a ring of 8 bullets" },
-    apply = function(s) s.blockNova = s.blockNova + 8 end,
   },
   {
     name = "Splitter", rarity = "rare",
@@ -257,15 +368,6 @@ Cards.list = {
     apply = function(s) s.decay = s.decay + 1 end,
   },
   {
-    name = "Ghost Bullets", rarity = "rare",
-    lines = { "+bullets pass through walls", "-15% damage" },
-    stack = "+25% damage through walls per extra copy (penalty doesn't stack)",
-    apply = function(s)
-      if s.ghost == 0 then s.damage = s.damage * 0.85 end
-      s.ghost = s.ghost + 1
-    end,
-  },
-  {
     name = "Echo", rarity = "rare",
     lines = { "+every shot echoes 2 more times for free", "-30% damage" },
     apply = function(s) s.burst = s.burst + 2; s.damage = s.damage * 0.7 end,
@@ -277,26 +379,80 @@ Cards.list = {
     apply = function(s) s.sticky = s.sticky + 1 end,
   },
   {
-    name = "Table Flip", rarity = "rare", special = "tableflip",
-    lines = { "Rerolls every card you own", "Rarities stay the same" },
+    name = "Piercing Rounds", rarity = "rare",
+    lines = { "+bullets pass through 1 player", "-10% damage" },
+    stack = "+1 player per copy",
+    apply = function(s) s.pierce = s.pierce + 1; s.damage = s.damage * 0.9 end,
+  },
+  {
+    name = "Shrapnel", rarity = "rare",
+    lines = { "+bullet impacts burst into 4 shards (25% damage each)" },
+    stack = "+4 shards per copy",
+    apply = function(s) s.shrapnel = s.shrapnel + 1 end,
+  },
+  {
+    name = "Ricochet Seeker", rarity = "rare",
+    lines = { "+bullets home in on enemies after bouncing", "+1 bullet bounce" },
+    stack = "stronger homing per copy",
+    apply = function(s) s.seek = s.seek + 2; s.bounces = s.bounces + 1 end,
+  },
+  {
+    name = "Last Stand", rarity = "rare",
+    lines = { "+once per round, survive a lethal hit with 1 HP" },
+    stack = "+1 use per round per copy",
+    apply = function(s) s.lastStand = s.lastStand + 1 end,
+  },
+  {
+    name = "Lock and Load", rarity = "rare", block = true,
+    lines = { "+blocking gives 1.5s where your shots don't use ammo" },
+    stack = "+1s per extra copy",
+    apply = function(s) s.lockLoad = s.lockLoad + 1 end,
+  },
+  {
+    name = "Momentum", rarity = "rare",
+    lines = { "+up to +50% damage while you're moving fast" },
+    stack = "+50% per copy",
+    apply = function(s) s.momentum = s.momentum + 1 end,
+  },
+  {
+    name = "Reload Nova", rarity = "rare",
+    lines = { "+finishing a reload fires 6 bullets around you" },
+    stack = "+6 bullets per copy",
+    apply = function(s) s.reloadNova = s.reloadNova + 6 end,
+  },
+  {
+    name = "Adrenaline", rarity = "rare",
+    lines = { "+below 50% HP: +40% fire rate and +20% move speed" },
+    stack = "+40% fire rate and +20% speed per copy",
+    apply = function(s) s.adrenaline = s.adrenaline + 1 end,
+  },
+  {
+    name = "Gravity Block", rarity = "rare", block = true,
+    lines = { "+blocking opens a black hole at your position" },
+    stack = "+30% pull radius and strength per extra copy",
+    apply = function(s) s.gravityBlock = s.gravityBlock + 1 end,
   },
 
   ---------------------------------------------------------------- Epic
   {
-    name = "Phoenix", rarity = "epic",
-    lines = { "+revive once per round at 50% HP" },
-    apply = function(s) s.lives = s.lives + 1 end,
+    name = "Lucky Shot", rarity = "epic",
+    lines = { "+20% chance to crit", "+crits deal 3x damage" },
+    apply = function(s) s.crit = s.crit + 0.2 end,
+  },
+  {
+    name = "Repulsor", rarity = "epic",
+    lines = { "+enemy bullets curve away from you" },
+    apply = function(s) s.repel = s.repel + 1 end,
+  },
+  {
+    name = "Nova", rarity = "epic", block = true,
+    lines = { "+blocking fires a ring of 8 bullets" },
+    apply = function(s) s.blockNova = s.blockNova + 8 end,
   },
   {
     name = "Orbiters", rarity = "epic",
     lines = { "+2 orbs circle you", "+orbs destroy enemy bullets", "+orbs damage the enemy" },
     apply = function(s) s.orbs = s.orbs + 2 end,
-  },
-  {
-    name = "Black Hole", rarity = "epic",
-    lines = { "+bullet impacts open a black hole", "+black holes pull the enemy in" },
-    stack = "+30% pull radius and strength per extra copy",
-    apply = function(s) s.blackhole = s.blackhole + 1 end,
   },
   {
     name = "Juggernaut", rarity = "epic",
@@ -312,8 +468,81 @@ Cards.list = {
     stack = "+35% field radius per extra copy",
     apply = function(s) s.stasis = s.stasis + 1 end,
   },
+  {
+    name = "Swap Shot", rarity = "epic",
+    lines = { "+hitting an enemy swaps your places", "1.5s cooldown" },
+    stack = "-30% cooldown per extra copy",
+    apply = function(s) s.swap = s.swap + 1 end,
+  },
+  {
+    name = "Vampire", rarity = "epic",
+    lines = { "+30% lifesteal", "+25 HP" },
+    apply = function(s) s.lifesteal = s.lifesteal + 0.3; s.maxHp = s.maxHp + 25 end,
+  },
+  {
+    name = "Overdrive", rarity = "epic",
+    lines = { "+60% fire rate", "+3 ammo", "-30% bullet size" },
+    apply = function(s) s.fireDelay = s.fireDelay / 1.6; s.ammo = s.ammo + 3; s.bulletSize = s.bulletSize * 0.7 end,
+  },
+  {
+    name = "Titan Rounds", rarity = "epic",
+    lines = { "+150% bullet size", "+50% damage", "-30% fire rate" },
+    apply = function(s) s.bulletSize = s.bulletSize * 2.5; s.damage = s.damage * 1.5; s.fireDelay = s.fireDelay / 0.7 end,
+  },
+  {
+    name = "Cluster Bombs", rarity = "epic",
+    lines = { "+bullets explode", "+explosions split into 3 mini blasts" },
+    stack = "+2 mini blasts per extra copy",
+    apply = function(s) s.explosion = s.explosion + 40; s.cluster = s.cluster + 1 end,
+  },
+  {
+    name = "Shield Generator", rarity = "epic",
+    lines = { "+start every round with a 60 HP shield" },
+    stack = "+60 shield per copy",
+    apply = function(s) s.shieldMax = s.shieldMax + 60 end,
+  },
+  {
+    name = "Time Warp", rarity = "epic", block = true,
+    lines = { "+blocking slows every enemy bullet for 1.5s" },
+    stack = "+1s per extra copy",
+    apply = function(s) s.timeWarp = s.timeWarp + 1 end,
+  },
+  {
+    name = "Hydra", rarity = "epic",
+    lines = { "+hits spawn 2 bullets that fly off (35% damage)" },
+    stack = "+1 bullet per extra copy",
+    apply = function(s) s.hydra = s.hydra + 1 end,
+  },
 
   ---------------------------------------------------------------- Legendary
+  {
+    name = "Reroll", rarity = "legendary", special = "reroll",
+    lines = { "Reroll these cards" },
+  },
+  {
+    name = "Ghost Bullets", rarity = "legendary",
+    lines = { "+bullets pass through walls", "-15% damage" },
+    stack = "+25% damage through walls per extra copy (penalty doesn't stack)",
+    apply = function(s)
+      if s.ghost == 0 then s.damage = s.damage * 0.85 end
+      s.ghost = s.ghost + 1
+    end,
+  },
+  {
+    name = "Table Flip", rarity = "legendary", special = "tableflip",
+    lines = { "Rerolls every card you own", "Rarities stay the same" },
+  },
+  {
+    name = "Phoenix", rarity = "legendary",
+    lines = { "+revive once per round at 50% HP" },
+    apply = function(s) s.lives = s.lives + 1 end,
+  },
+  {
+    name = "Black Hole", rarity = "legendary",
+    lines = { "+bullet impacts open a black hole", "+black holes pull the enemy in" },
+    stack = "+30% pull radius and strength per extra copy",
+    apply = function(s) s.blackhole = s.blackhole + 1 end,
+  },
   {
     name = "Laser", rarity = "legendary",
     lines = { "+your shots become instant laser beams", "+beams bounce off walls" },
@@ -323,6 +552,33 @@ Cards.list = {
   {
     name = "Shrine of Order", rarity = "legendary", special = "shrine",
     lines = { "For each rarity, all your cards of that rarity become copies of one of them", "Card count stays the same" },
+  },
+  {
+    name = "Sentry", rarity = "legendary",
+    lines = { "+a turret hovers by you and shoots the nearest enemy", "+turret shots deal 40% of your damage" },
+    stack = "turret fires 50% faster per extra copy",
+    apply = function(s) s.sentry = s.sentry + 1 end,
+  },
+  {
+    name = "Mirror Shot", rarity = "legendary",
+    lines = { "+every shot is also fired from the mirrored side of the arena" },
+    stack = "2nd copy: also mirrored top-to-bottom, 3rd: corner-to-corner, more: +15% damage",
+    apply = function(s) s.mirror = s.mirror + 1 end,
+  },
+  {
+    name = "Railgun", rarity = "legendary",
+    lines = { "+shots become super-fast bolts", "+bolts pierce every player", "+100% damage",
+      "-45% fire rate", "-1 ammo" },
+    stack = "+50% damage per extra copy",
+    apply = function(s)
+      if s.railgun == 0 then
+        s.bulletSpeed = s.bulletSpeed * 2.5; s.bulletGravity = 0; s.pierce = s.pierce + 10
+        s.damage = s.damage * 2; s.fireDelay = s.fireDelay * 1.8; s.ammo = s.ammo - 1
+      else
+        s.damage = s.damage * 1.5
+      end
+      s.railgun = s.railgun + 1
+    end,
   },
 }
 

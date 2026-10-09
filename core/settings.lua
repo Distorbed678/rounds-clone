@@ -2,6 +2,7 @@
 local Bloom = require "gfx.bloom"
 local fx = require "gfx.fx"
 local Cards = require "game.cards"
+local Map = require "game.map"
 local platform = require "core.platform"
 
 local Settings = {}
@@ -74,6 +75,7 @@ Settings.values = {}
 for k, v in pairs(defaults) do Settings.values[k] = v end
 Settings.values.binds = copyBinds(Settings.DEFAULT_BINDS)
 Settings.values.cards = {} -- card id -> { rarity = id or nil, disabled = bool }
+Settings.values.maps = {}  -- map id -> true when the map is turned off
 
 local function clamp(v, lo, hi)
   return math.max(lo, math.min(hi, v))
@@ -93,11 +95,14 @@ function Settings.load()
   for line in love.filesystem.lines(FILE) do
     local scheme, action, b = line:match("^bind%.([%w_]+)%.([%w_]+)=(.*)$")
     local cardId, cardVal = line:match("^card%.([%w_]+)=(.*)$")
+    local mapId, mapVal = line:match("^map%.([%w_]+)=(.*)$")
     local k, val = line:match("^([%w_]+)=(.*)$")
     if scheme then
       if v.binds[scheme] and Settings.DEFAULT_BINDS[scheme][action] and validBinding(b) then
         v.binds[scheme][action] = b
       end
+    elseif mapId then
+      if Map.byId[mapId] and mapVal == "off" then v.maps[mapId] = true end
     elseif cardId then
       if Cards.byId[cardId] then
         local rarity, state = cardVal:match("^(%w*),(%w+)$")
@@ -156,6 +161,9 @@ function Settings.save()
     for action, key in pairs(b) do
       lines[#lines + 1] = "bind." .. scheme .. "." .. action .. "=" .. key
     end
+  end
+  for id in pairs(v.maps) do
+    lines[#lines + 1] = "map." .. id .. "=off"
   end
   for id, e in pairs(v.cards) do
     if e.rarity or e.disabled then
@@ -230,9 +238,27 @@ function Settings.resetGameplay()
   v.picksPerRound = defaults.picksPerRound
   for _, r in ipairs(Cards.RARITIES) do v["weight_" .. r.id] = defaults["weight_" .. r.id] end
   v.cards = {}
+  v.maps = {}
 end
 
--- The gameplay rules (see Cards.applyRules) described by these settings.
+---------------------------------------------------------------- maps
+function Settings.mapEnabled(map)
+  return not Settings.values.maps[map.id]
+end
+
+function Settings.setMap(map, enabled)
+  Settings.values.maps[map.id] = (not enabled) or nil
+end
+
+function Settings.enabledMapCount()
+  local n = 0
+  for _, m in ipairs(Map.list) do
+    if Settings.mapEnabled(m) then n = n + 1 end
+  end
+  return n
+end
+
+-- The gameplay rules (cards, picks, rarity weights and the map pool) described by these settings.
 function Settings.cardRules()
   local v = Settings.values
   local rules = { pickFrom = v.pickFrom, picksPerRound = v.picksPerRound, weights = {}, rarity = {}, disabled = {} }
@@ -240,6 +266,10 @@ function Settings.cardRules()
   for _, c in ipairs(Cards.list) do
     rules.rarity[c.index] = Settings.cardRarity(c)
     rules.disabled[c.index] = not Settings.cardEnabled(c) or nil
+  end
+  rules.maps = {} -- disabled map indices (only the host's world uses these)
+  for _, m in ipairs(Map.list) do
+    if not Settings.mapEnabled(m) then rules.maps[m.index] = true end
   end
   return rules
 end
