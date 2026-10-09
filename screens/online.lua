@@ -4,6 +4,7 @@ local ui = require "core.ui"
 local steam = require "online.steam"
 local session = require "online.session"
 local Settings = require "core.settings"
+local platform = require "core.platform"
 
 local Online = {}
 Online.__index = Online
@@ -33,6 +34,18 @@ function Online:draw()
 
   local w = 420
   local x = (app.W - w) / 2
+
+  if platform.web then
+    app.centered("Online play needs the desktop version", app.fonts.title, 230, { 1, 0.6, 0.45 })
+    love.graphics.setFont(app.fonts.med)
+    love.graphics.setColor(1, 1, 1, 0.75)
+    love.graphics.printf("Online matches run over Steam, which a browser can't use. Download the Windows or " ..
+      "Linux version from the game's GitHub releases page to play online:", app.W / 2 - 360, 280, 720, "center")
+    love.graphics.setColor(1, 0.85, 0.4)
+    love.graphics.printf("github.com/Distorbed678/rounds-clone/releases", app.W / 2 - 360, 360, 720, "center")
+    if ui.button("Back", x, 470, w, 54) then back() end
+    return
+  end
 
   if not steam.available then
     app.centered("Steam isn't available", app.fonts.title, 230, { 1, 0.6, 0.45 })

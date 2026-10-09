@@ -6,6 +6,7 @@ local Settings = require "core.settings"
 local Cards = require "game.cards"
 local Input = require "core.input"
 local session = require "online.session"
+local platform = require "core.platform"
 
 local Screen = {}
 Screen.__index = Screen
@@ -98,7 +99,59 @@ function Screen:applyDisplay()
   self.displayEdited = false
 end
 
+-- Effects options (bloom, shake, particles, FPS counter): one column.
+function Screen:drawGraphics(rx, ry, colW, h, gap)
+  local v = Settings.values
+  local d
+  d = ui.cycler("Bloom", v.bloom and "On" or "Off", rx, ry, colW, h)
+  if d ~= 0 then
+    v.bloom = not v.bloom
+    Settings.applyEffects()
+  end
+  ry = ry + gap
+
+  d = ui.cycler("Bloom intensity", Settings.BLOOM_LEVELS[v.bloomLevel][1], rx, ry, colW, h)
+  if d ~= 0 then
+    v.bloomLevel = cycle(v.bloomLevel, #Settings.BLOOM_LEVELS, d)
+    Settings.applyEffects()
+  end
+  ry = ry + gap
+
+  d = ui.cycler("Screen shake", Settings.SHAKE_LEVELS[v.shake][1], rx, ry, colW, h)
+  if d ~= 0 then
+    v.shake = cycle(v.shake, #Settings.SHAKE_LEVELS, d)
+    Settings.applyEffects()
+  end
+  ry = ry + gap
+
+  d = ui.cycler("Particles", Settings.PARTICLE_LEVELS[v.particles][1], rx, ry, colW, h)
+  if d ~= 0 then
+    v.particles = cycle(v.particles, #Settings.PARTICLE_LEVELS, d)
+    Settings.applyEffects()
+  end
+  ry = ry + gap
+
+  d = ui.cycler("Show FPS", v.showFps and "On" or "Off", rx, ry, colW, h)
+  if d ~= 0 then
+    v.showFps = not v.showFps
+    app.showFps = v.showFps
+  end
+end
+
+-- Browser build: the page owns the window, so only the effects options apply.
+function Screen:drawVideoWeb(x, y, w)
+  local h, gap = 44, 52
+  local colW = (w - 30) / 2
+  self:drawGraphics(x, y, colW, h, gap)
+  love.graphics.setFont(app.fonts.med)
+  love.graphics.setColor(1, 1, 1, 0.6)
+  love.graphics.printf("You're playing in the browser.\n\nUse the Fullscreen button under the game, or your " ..
+    "browser's fullscreen (F11), for a bigger view. Window size, resolution and VSync are set by the browser.",
+    x + colW + 30, y + 8, colW, "left")
+end
+
 function Screen:drawVideo(x, y, w)
+  if platform.web then return self:drawVideoWeb(x, y, w) end
   local v = Settings.values
   local h, gap = 44, 52
   local colW = (w - 30) / 2
@@ -169,41 +222,7 @@ function Screen:drawVideo(x, y, w)
     self:applyDisplay()
   end
 
-  -- Graphics
-  local rx, ry = x + colW + 30, y
-  d = ui.cycler("Bloom", v.bloom and "On" or "Off", rx, ry, colW, h)
-  if d ~= 0 then
-    v.bloom = not v.bloom
-    Settings.applyEffects()
-  end
-  ry = ry + gap
-
-  d = ui.cycler("Bloom intensity", Settings.BLOOM_LEVELS[v.bloomLevel][1], rx, ry, colW, h)
-  if d ~= 0 then
-    v.bloomLevel = cycle(v.bloomLevel, #Settings.BLOOM_LEVELS, d)
-    Settings.applyEffects()
-  end
-  ry = ry + gap
-
-  d = ui.cycler("Screen shake", Settings.SHAKE_LEVELS[v.shake][1], rx, ry, colW, h)
-  if d ~= 0 then
-    v.shake = cycle(v.shake, #Settings.SHAKE_LEVELS, d)
-    Settings.applyEffects()
-  end
-  ry = ry + gap
-
-  d = ui.cycler("Particles", Settings.PARTICLE_LEVELS[v.particles][1], rx, ry, colW, h)
-  if d ~= 0 then
-    v.particles = cycle(v.particles, #Settings.PARTICLE_LEVELS, d)
-    Settings.applyEffects()
-  end
-  ry = ry + gap
-
-  d = ui.cycler("Show FPS", v.showFps and "On" or "Off", rx, ry, colW, h)
-  if d ~= 0 then
-    v.showFps = not v.showFps
-    app.showFps = v.showFps
-  end
+  self:drawGraphics(x + colW + 30, y, colW, h, gap)
 
   love.graphics.setFont(app.fonts.small)
   love.graphics.setColor(1, 1, 1, 0.45)

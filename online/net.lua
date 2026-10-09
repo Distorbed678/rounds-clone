@@ -1,7 +1,7 @@
 -- Network message codec and transports.
 -- A transport has :send(peer, data, reliable) and :receive() -> { {from=, data=}, ... }.
 -- The Steam transport lives in session.lua; the loopback one here is for offline testing.
-local bit = require "bit"
+local bit = require "core.bit"
 
 local pack, unpack = love.data.pack, love.data.unpack
 

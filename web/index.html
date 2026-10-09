@@ -1,0 +1,161 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Rounds Clone</title>
+  <meta name="description" content="Rounds Clone: a 2D duel shooter where the round loser picks an upgrade card. Two players on one keyboard, right in your browser.">
+  <style>
+    :root {
+      --bg: #121218;
+      --panel: #1c1c26;
+      --text: #e8e8ee;
+      --muted: #9a9aaa;
+      --accent: #ff8c26;
+    }
+    * { box-sizing: border-box; }
+    html, body { margin: 0; height: 100%; background: var(--bg); color: var(--text);
+      font: 15px/1.5 system-ui, -apple-system, "Segoe UI", sans-serif; }
+    a { color: var(--accent); text-decoration: none; }
+    a:hover { text-decoration: underline; }
+
+    header { display: flex; align-items: center; gap: 16px; padding: 10px 16px; flex-wrap: wrap; }
+    header h1 { font-size: 20px; margin: 0; letter-spacing: 0.04em; }
+    header nav { display: flex; gap: 16px; margin-left: auto; align-items: center; flex-wrap: wrap; }
+    button { font: inherit; color: var(--text); background: var(--panel); border: 2px solid #3a3a4a;
+      border-radius: 8px; padding: 5px 14px; cursor: pointer; }
+    button:hover { border-color: var(--accent); }
+
+    /* The game canvas keeps 16:9 and fills as much of the window as it can. */
+    #stage { display: flex; justify-content: center; align-items: center; padding: 0 16px; }
+    #canvas, #loading {
+      width: min(100vw - 32px, (100vh - 150px) * 16 / 9);
+      aspect-ratio: 16 / 9; height: auto; display: block; border-radius: 6px;
+      background: var(--panel);
+    }
+    #canvas { visibility: hidden; position: absolute; outline: none; }
+    #loading { display: flex; align-items: center; justify-content: center; color: var(--muted); font-size: 18px; }
+
+    /* Fullscreen: black bars around the 16:9 canvas. */
+    #stage:fullscreen { background: #000; padding: 0; }
+    #stage:fullscreen #canvas { width: min(100vw, 100vh * 16 / 9); border-radius: 0; }
+
+    footer { color: var(--muted); font-size: 13px; text-align: center; padding: 8px 16px 14px; }
+    kbd { background: var(--panel); border: 1px solid #3a3a4a; border-radius: 4px; padding: 0 5px; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <header>
+    <h1>ROUNDS CLONE</h1>
+    <nav>
+      <a href="https://github.com/Distorbed678/rounds-clone/releases/latest">Desktop version (online play)</a>
+      <a href="https://github.com/Distorbed678/rounds-clone">Source</a>
+      <button id="fullscreen" type="button">Fullscreen</button>
+    </nav>
+  </header>
+
+  <div id="stage">
+    <div id="loading">Loading...</div>
+    <canvas id="canvas" tabindex="0" oncontextmenu="event.preventDefault()"></canvas>
+  </div>
+
+  <footer>
+    <kbd>P1</kbd> W A S D move/aim, <kbd>Space</kbd> fire, <kbd>L-Shift</kbd> block
+    &nbsp;&middot;&nbsp;
+    <kbd>P2</kbd> arrows move/aim, <kbd>R-Ctrl</kbd> fire, <kbd>R-Shift</kbd> block
+    &nbsp;&middot;&nbsp;
+    <kbd>Esc</kbd> menu (keys can be changed in Settings)<br>
+    Local play only in the browser. Settings are saved in this browser.
+  </footer>
+
+  <script>
+    var stage = document.getElementById("stage");
+    var canvas = document.getElementById("canvas");
+    var loading = document.getElementById("loading");
+
+    document.getElementById("fullscreen").addEventListener("click", function () {
+      if (stage.requestFullscreen) stage.requestFullscreen();
+      else if (stage.webkitRequestFullscreen) stage.webkitRequestFullscreen();
+      canvas.focus();
+    });
+
+    // Render at the size the canvas is shown at (not a stretched 1280x720), so the game stays
+    // sharp in big windows and fullscreen. LÖVE (SDL) re-reads the canvas size on a window
+    // "resize" event, so one is sent after every change.
+    var started = false, syncing = false;
+    function syncCanvasSize() {
+      if (!started || syncing) return;
+      var r = canvas.getBoundingClientRect();
+      var w = Math.round(r.width), h = Math.round(r.height);
+      if (w > 0 && h > 0 && (canvas.width !== w || canvas.height !== h)) {
+        canvas.width = w;
+        canvas.height = h;
+        syncing = true;
+        window.dispatchEvent(new Event("resize"));
+        syncing = false;
+      }
+    }
+    if (window.ResizeObserver) new ResizeObserver(syncCanvasSize).observe(canvas);
+    window.addEventListener("resize", syncCanvasSize);
+    // Our Fullscreen button only enlarges the page's game area. SDL (inside love.js) would treat
+    // any fullscreen change as its own and then stop following the canvas size, so the event is
+    // stopped before it reaches SDL's listener on `document`; the resize handling above does the rest.
+    ["fullscreenchange", "webkitfullscreenchange", "mozfullscreenchange"].forEach(function (type) {
+      window.addEventListener(type, function (e) {
+        e.stopPropagation();
+        setTimeout(syncCanvasSize, 50);
+        setTimeout(syncCanvasSize, 400);
+      }, true);
+    });
+
+    window.onload = function () { window.focus(); canvas.focus(); };
+    canvas.addEventListener("mousedown", function () { canvas.focus(); });
+
+    // Keep game keys (space, arrows, tab, backspace) from scrolling or navigating the page.
+    window.addEventListener("keydown", function (e) {
+      if ([8, 9, 32, 37, 38, 39, 40].indexOf(e.keyCode) > -1) e.preventDefault();
+    }, false);
+
+    var Module = {
+      arguments: ["./game.love"],
+      INITIAL_MEMORY: 67108864,
+      printErr: console.error.bind(console),
+      canvas: (function () {
+        canvas.addEventListener("webglcontextlost", function (e) {
+          alert("The graphics context was lost. Please reload the page.");
+          e.preventDefault();
+        }, false);
+        return canvas;
+      })(),
+      setStatus: function (text) {
+        if (text) {
+          loading.textContent = text;
+        } else if (Module.remainingDependencies === 0) {
+          loading.style.display = "none";
+          canvas.style.position = "static";
+          canvas.style.visibility = "visible";
+          canvas.focus();
+          started = true;
+          setTimeout(syncCanvasSize, 300); // after LÖVE has created its window
+          setTimeout(syncCanvasSize, 1500);
+        }
+      },
+      totalDependencies: 0,
+      remainingDependencies: 0,
+      monitorRunDependencies: function (left) {
+        this.remainingDependencies = left;
+        this.totalDependencies = Math.max(this.totalDependencies, left);
+        Module.setStatus(left ? "Loading... (" + (this.totalDependencies - left) + "/" + this.totalDependencies + ")" : "");
+      }
+    };
+    Module.setStatus("Loading...");
+    window.onerror = function () {
+      loading.style.display = "flex";
+      loading.textContent = "Something went wrong. Please reload the page.";
+    };
+    var applicationLoad = function () { Love(Module); };
+  </script>
+  <script src="game.js"></script>
+  <script async src="love.js" onload="applicationLoad(this)"></script>
+</body>
+</html>

@@ -1,6 +1,7 @@
 local app = require "core.app"
 local ui = require "core.ui"
 local Settings = require "core.settings"
+local platform = require "core.platform"
 
 local Menu = {}
 Menu.__index = Menu
@@ -55,7 +56,7 @@ function Menu:draw()
   if ui.button("Settings", x, y + 144, w, h) then
     app.push(require("screens.settings").new())
   end
-  if ui.button("Quit", x, y + 216, w, h) then
+  if not platform.web and ui.button("Quit", x, y + 216, w, h) then
     love.event.quit()
   end
 

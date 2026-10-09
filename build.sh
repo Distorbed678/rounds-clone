@@ -2,17 +2,20 @@
 # Builds release packages into dist/ (run on Linux):
 #   dist/RoundsClone-x86_64.AppImage     Linux: one self-contained executable
 #   dist/RoundsClone-windows-x64.zip     Windows: RoundsClone.exe + DLLs, unzip and run
+#   dist/web/                            Browser version (love.js), served by GitHub Pages
 #
-# Usage: ./build.sh [all|linux|windows|love]     (default: all)
+# Usage: ./build.sh [all|linux|windows|web|love]     (default: all)
 #   love = only build dist/RoundsClone.love (runs anywhere with `love RoundsClone.love`)
+#   all  = love + linux + windows, plus web when Node.js (npx) is installed
 #
-# Needs: curl, zip, unzip. The LÖVE runtimes and appimagetool are downloaded on the
-# first build into build/cache/ (gitignored).
+# Needs: curl, zip, unzip (and Node.js for web). The LÖVE runtimes and appimagetool are
+# downloaded on the first build into build/cache/ (gitignored); love.js comes from npm.
 set -euo pipefail
 
 NAME="RoundsClone"
 TITLE="Rounds Clone"
 LOVE_VERSION="11.5"
+LOVEJS_VERSION="11.4.1" # love.js (LÖVE 11 for the browser), from npm
 
 ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 BUILD="$ROOT/build"
@@ -47,7 +50,7 @@ build_love() {
   log "Packing $NAME.love"
   rm -f "$out"
   (cd "$ROOT" && zip -9 -q -r "$out" . \
-    -x '.git/*' '.claude/*' 'build/*' 'dist/*' 'lib/*' '*.md' '*.sh' '.gitignore' 'steam_appid.txt')
+    -x '.git/*' '.github/*' '.claude/*' 'build/*' 'dist/*' 'lib/*' 'web/*' '*.md' '*.sh' '.gitignore' 'steam_appid.txt')
   local files
   files="$(unzip -Z1 "$out")"
   grep -qx 'main.lua' <<<"$files" || die "$NAME.love has no main.lua"
@@ -115,13 +118,32 @@ build_windows() {
   (cd "$BUILD/windows" && zip -9 -q -r "$DIST/$NAME-windows-x64.zip" "$NAME")
 }
 
+# Browser build: love.js compiles nothing; it packages the .love next to a prebuilt
+# LÖVE-for-WebAssembly. Compatibility mode (-c) needs no special server headers, so it
+# works on GitHub Pages. Our own page (web/index.html) replaces love.js's default one.
+build_web() {
+  command -v npx >/dev/null || die "Node.js (npx) is required for the web build"
+  log "Building web version"
+  rm -rf "$DIST/web"
+  npx --yes "love.js@$LOVEJS_VERSION" -c -t "$TITLE" -m 67108864 "$DIST/$NAME.love" "$DIST/web" >/dev/null \
+    || die "love.js failed"
+  cp "$ROOT/web/index.html" "$DIST/web/index.html"
+  rm -rf "$DIST/web/theme"
+  touch "$DIST/web/.nojekyll"
+  [ -f "$DIST/web/love.wasm" ] && [ -f "$DIST/web/game.data" ] || die "web build is incomplete"
+}
+
 mkdir -p "$CACHE" "$DIST"
 case "$TARGET" in
-  all) build_love; build_linux; build_windows ;;
+  all)
+    build_love; build_linux; build_windows
+    if command -v npx >/dev/null; then build_web; else log "Skipping web build (Node.js not installed)"; fi
+    ;;
   linux) build_love; build_linux ;;
   windows) build_love; build_windows ;;
+  web) build_love; build_web ;;
   love) build_love ;;
-  *) die "unknown target '$TARGET' (use all, linux, windows or love)" ;;
+  *) die "unknown target '$TARGET' (use all, linux, windows, web or love)" ;;
 esac
 
 log "Done:"

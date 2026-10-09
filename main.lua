@@ -3,6 +3,7 @@ local steam = require "online.steam"
 local session = require "online.session"
 local Settings = require "core.settings"
 local Bloom = require "gfx.bloom"
+local platform = require "core.platform"
 
 function love.load(args)
   love.keyboard.setKeyRepeat(false)
@@ -40,7 +41,7 @@ end
 
 function love.keypressed(key, scancode, isrepeat)
   local alt = love.keyboard.isDown("lalt", "ralt")
-  if not isrepeat and (key == "f11" or ((key == "return" or key == "kpenter") and alt)) then
+  if not platform.web and not isrepeat and (key == "f11" or ((key == "return" or key == "kpenter") and alt)) then
     Settings.toggleFullscreen()
     return
   end
@@ -72,44 +73,47 @@ function love.textinput(t)
 end
 
 -- LÖVE 11.5's default loop plus an optional frame cap (Settings.values.maxFps).
-function love.run()
-  if love.load then love.load(love.arg.parseGameArguments(arg), arg) end
-  if love.timer then love.timer.step() end
+-- Not in the browser: love.js drives frames itself, and sleeping would block the page.
+if not platform.web then
+  function love.run()
+    if love.load then love.load(love.arg.parseGameArguments(arg), arg) end
+    if love.timer then love.timer.step() end
 
-  local dt = 0
-  local nextFrame = love.timer.getTime()
-  return function()
-    if love.event then
-      love.event.pump()
-      for name, a, b, c, d, e, f in love.event.poll() do
-        if name == "quit" then
-          if not love.quit or not love.quit() then return a or 0 end
+    local dt = 0
+    local nextFrame = love.timer.getTime()
+    return function()
+      if love.event then
+        love.event.pump()
+        for name, a, b, c, d, e, f in love.event.poll() do
+          if name == "quit" then
+            if not love.quit or not love.quit() then return a or 0 end
+          end
+          love.handlers[name](a, b, c, d, e, f)
         end
-        love.handlers[name](a, b, c, d, e, f)
       end
-    end
 
-    dt = love.timer.step()
-    if love.update then love.update(dt) end
+      dt = love.timer.step()
+      if love.update then love.update(dt) end
 
-    if love.graphics and love.graphics.isActive() then
-      love.graphics.origin()
-      love.graphics.clear(love.graphics.getBackgroundColor())
-      if love.draw then love.draw() end
-      love.graphics.present()
-    end
+      if love.graphics and love.graphics.isActive() then
+        love.graphics.origin()
+        love.graphics.clear(love.graphics.getBackgroundColor())
+        if love.draw then love.draw() end
+        love.graphics.present()
+      end
 
-    local cap = Settings.values.maxFps
-    if cap and cap > 0 then
-      local now = love.timer.getTime()
-      nextFrame = math.max(nextFrame + 1 / cap, now - 1 / cap)
-      local wait = nextFrame - now
-      -- Sleep for most of the wait, then spin for precision.
-      if wait > 0.002 then love.timer.sleep(wait - 0.0015) end
-      while love.timer.getTime() < nextFrame do end
-    else
-      nextFrame = love.timer.getTime()
-      love.timer.sleep(0.001)
+      local cap = Settings.values.maxFps
+      if cap and cap > 0 then
+        local now = love.timer.getTime()
+        nextFrame = math.max(nextFrame + 1 / cap, now - 1 / cap)
+        local wait = nextFrame - now
+        -- Sleep for most of the wait, then spin for precision.
+        if wait > 0.002 then love.timer.sleep(wait - 0.0015) end
+        while love.timer.getTime() < nextFrame do end
+      else
+        nextFrame = love.timer.getTime()
+        love.timer.sleep(0.001)
+      end
     end
   end
 end

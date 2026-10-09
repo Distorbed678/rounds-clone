@@ -39,6 +39,7 @@ function steam.init()
   steam.tried = true
 
   local ok, err = pcall(function()
+    if love._os == "Web" then error("Online play needs the desktop version of the game") end
     local ffi = require "ffi"
     local libs = LIBS[ffi.os]
     if not libs or ffi.arch ~= "x64" then error("Online play needs 64-bit Windows or Linux") end

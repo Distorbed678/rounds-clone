@@ -4,7 +4,9 @@ A fan-made clone of [ROUNDS](https://store.steampowered.com/app/1557740/ROUNDS/)
 
 - **Local play:** 2 players on one keyboard.
 - **Online play:** up to 4 players over Steam, joining with a 6-character lobby code.
-- **Platforms:** Windows and Linux (64-bit).
+- **Platforms:** Windows and Linux (64-bit), plus a browser version for local play.
+
+**▶ Play in your browser: https://distorbed678.github.io/rounds-clone/** (local 2-player; online play needs the desktop version)
 
 > This project is not affiliated with or endorsed by Landfall Games, the makers of ROUNDS.
 
@@ -36,6 +38,10 @@ A fan-made clone of [ROUNDS](https://store.steampowered.com/app/1557740/ROUNDS/)
 
 1. Download `RoundsClone-windows-x64.zip` (see [Releases](../../releases), or [build it yourself](#building-releases)).
 2. Unzip it anywhere and run `RoundsClone\RoundsClone.exe`. Keep the DLLs next to the exe.
+
+### Browser
+
+Open **https://distorbed678.github.io/rounds-clone/**. Nothing to install. Both players share the keyboard, settings are saved in your browser, and the **Fullscreen** button above the game gives a bigger view. Online play isn't available in the browser, because it runs over Steam.
 
 ### Run from source
 
@@ -81,12 +87,13 @@ Steam invites also work, but only if the friend already has the game open. The g
 
 ## Building releases
 
-`build.sh` builds release packages on Linux. It needs `curl`, `zip` and `unzip`.
+`build.sh` builds release packages on Linux. It needs `curl`, `zip` and `unzip`, plus [Node.js](https://nodejs.org/) for the browser version.
 
 ```sh
-./build.sh            # everything
+./build.sh            # everything (the web build is skipped if Node.js isn't installed)
 ./build.sh linux      # AppImage only
 ./build.sh windows    # Windows zip only
+./build.sh web        # browser version only
 ./build.sh love       # just the .love file
 ```
 
@@ -97,6 +104,9 @@ Output goes to `dist/`:
 | `RoundsClone-x86_64.AppImage` | Single-file Linux executable. LÖVE's AppImage with the game and the Steam libraries inside. |
 | `RoundsClone-windows-x64.zip` | `RoundsClone.exe` (LÖVE's `love.exe` with the game appended), LÖVE's DLLs and the Steam DLLs. |
 | `RoundsClone.love` | The game files only. Runs anywhere with `love RoundsClone.love`, but without Steam libraries. |
+| `web/` | The browser version: [love.js](https://github.com/Davidobot/love.js) (LÖVE compiled to WebAssembly) with the game, using the page in `web/index.html`. Serve the folder over HTTP to test it locally, e.g. `python3 -m http.server -d dist/web`. |
+
+Every published GitHub release also runs `.github/workflows/pages.yml`, which builds the browser version and deploys it to GitHub Pages. You can also run that workflow by hand from the Actions tab.
 
 The LÖVE 11.5 runtimes and `appimagetool` are downloaded once from their official GitHub releases into `build/cache/`.
 
@@ -115,6 +125,8 @@ rounds-clone/
 ├── lib/
 │   ├── windows/         steam_api64.dll, luasteam.dll
 │   └── linux/           libsteam_api.so, luasteam.so
+├── web/index.html       the browser version's page
+├── .github/workflows/   GitHub Pages deployment of the browser version
 ├── build.sh             release builder
 └── steam_appid.txt      Spacewar app id for running from source
 ```

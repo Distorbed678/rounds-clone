@@ -2,6 +2,7 @@
 local Bloom = require "gfx.bloom"
 local fx = require "gfx.fx"
 local Cards = require "game.cards"
+local platform = require "core.platform"
 
 local Settings = {}
 
@@ -309,6 +310,7 @@ function Settings.update()
 end
 
 function Settings.applyWindow()
+  if platform.web then return end -- the web page owns the canvas size and fullscreen
   if love.graphics.getCanvas() then
     Settings.windowPending = true
     return

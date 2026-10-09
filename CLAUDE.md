@@ -5,14 +5,17 @@ A clone of the game ROUNDS: 2D side-view duels where the round loser picks an up
 ## Running and checking
 - **Linux dev machine (current):** `love` 11.5 and `luajit` are on the PATH and Steam is installed. Run with `love .` from the repo root. Check syntax with `luajit -bl file.lua > /dev/null`. Headless harnesses run with `love <harnessDir>`. Save folder: `~/.local/share/love/rounds_clone/`.
 - **Windows PC:** LÖVE 11.5 is at `%LOCALAPPDATA%\Programs\love-11.5-win64` (`love.exe`, plus `lovec.exe`, which prints to the console), and Lua 5.4's `luac.exe -p` works for syntax checks. Steam is **not installed** there.
-- The game runs on **LuaJIT (Lua 5.1)**, so don't use `//`, `&`/`|` or other 5.4 features. Use the `bit` library and `love.data.pack`.
+- The desktop game runs on **LuaJIT (Lua 5.1)**, so don't use `//`, `&`/`|` or other 5.4 features. Use `love.data.pack`, and get bit operations with `require "core.bit"` (never `require "bit"` directly).
+- **The game also runs in the browser** (love.js, plain Lua 5.1: no JIT, no `ffi`, no `bit`, no `goto`). `core/platform.lua` sets `platform.web` (from `love._os == "Web"`). On the web: no Steam/online, no custom `love.run` (love.js drives frames), `Settings.applyWindow` does nothing (the page owns the canvas), the Video tab shows only the effects options, and Quit is hidden. Anything new that touches the window, files outside the save folder, native libraries or `ffi` must be guarded with `platform.web`.
 - Without Steam (or on an unsupported OS) `online/steam.lua` fails gracefully and online play is disabled.
 
 ## Building releases
-`./build.sh [all|linux|windows|love]` (Linux; needs curl, zip, unzip) writes to `dist/`:
+`./build.sh [all|linux|windows|web|love]` (Linux; needs curl, zip, unzip, and Node.js for `web`) writes to `dist/`:
 - `RoundsClone.love`: the game files (everything except `lib/`, `*.md`, `*.sh`, `steam_appid.txt` and build output).
 - `RoundsClone-x86_64.AppImage`: LÖVE's AppImage with `RoundsClone.love` and the Steam `.so` files at the AppDir root. `FUSE_PATH` is set in `AppRun`, so the game runs fused.
 - `RoundsClone-windows-x64.zip`: `RoundsClone.exe` (love.exe with the .love appended), LÖVE's DLLs and the Steam DLLs.
+- `web/`: `npx love.js@11.4.1 -c` output (compatibility mode: no SharedArrayBuffer, so it works on GitHub Pages) with `web/index.html` replacing love.js's page. The page sizes the canvas drawing buffer to its on-screen size and sends a `resize` event so LÖVE renders at native resolution. It also stops `fullscreenchange` events before SDL sees them, because otherwise SDL treats the page's fullscreen as its own and stops following the canvas size.
+- **GitHub Pages:** `.github/workflows/pages.yml` runs `./build.sh web` and deploys `dist/web` on every published release (and on manual dispatch). Live at https://distorbed678.github.io/rounds-clone/.
 
 The LÖVE runtimes and appimagetool are downloaded once into `build/cache/` (gitignored). If you add asset folders, make sure `build_love` doesn't exclude them.
 
@@ -20,7 +23,7 @@ The LÖVE runtimes and appimagetool are downloaded once into `build/cache/` (git
 **After every bug fix or change, commit it, push it and publish a GitHub release, unless the user says not to commit or release yet.**
 1. Run the relevant checks first (syntax check, headless harnesses, screenshots).
 2. Commit with a descriptive message and push to `main`. If the push can't find credentials (the global `credential.helper` is `cache`), push with `git -c credential.helper= -c credential.helper='!gh auth git-credential' push origin main`.
-3. Run `./build.sh all`, then smoke-test the AppImage: launch it and confirm it loads the bundled Steam libraries.
+3. Run `./build.sh all`, then smoke-test the AppImage: launch it and confirm it loads the bundled Steam libraries. If the change could affect the browser version, also test `dist/web` in headless Firefox (see Testing).
 4. Create the release:
 
        gh release create vX.Y.Z dist/RoundsClone-x86_64.AppImage dist/RoundsClone-windows-x64.zip \
@@ -29,6 +32,7 @@ The LÖVE runtimes and appimagetool are downloaded once into `build/cache/` (git
    - `--target` needs the full commit SHA.
    - The release notes cover: what was fixed or changed, whether online play is still compatible with the previous version (if `session.PROTOCOL` was bumped, say so), the download table, and SHA-256 checksums of both files.
 5. Versioning: bump the patch version (v0.1.1 → v0.1.2) for fixes and small changes, and the minor version (v0.1.x → v0.2.0) for feature batches. Check the latest tag with `gh release list --repo Distorbed678/rounds-clone`.
+6. The release also deploys the browser version (Pages workflow). Check it with `gh run list --repo Distorbed678/rounds-clone --workflow pages.yml --limit 1`.
 
 ## Architecture
 `main.lua` and `conf.lua` stay at the repo root (LÖVE requires it). Modules are required by dotted path, e.g. `require "game.world"`, `require "online.net"`.
@@ -80,6 +84,7 @@ love.keyboard.isDown = function(...) ... end   -- fake input
 - **Local/UI:** drive `love.keypressed`, read state with `require("core.app").base()`, and screenshot with `app.canvas:newImageData():encode("png", name)` after `love.draw()`.
 - **Network:** `hub = net.loopback(0.1)`, then `Match.newClient(slots, i, winScore, hub:endpoint(id), "H", nil, {popEvents=fn})` and `Match.newHost(slots, winScore, hub:endpoint("H"), {popEvents=fn})`. Construct clients **before** the host, because `newClient` resets `fx.recorder`. Set `fx.recorder = nil` while updating clients, and compare client proxies with `host.world.players`.
 - Give the harness its own `conf.lua` with a separate `t.identity` (and one per process if running several in parallel, since they share `settings.txt`). Run with `love <harnessDir>` under `timeout`, then view the screenshots.
+- **Browser build:** serve `dist/web` with `python3 -m http.server`, then drive it with `puppeteer-core` (installed in the scratchpad) using the system Firefox (`browser: "firefox", executablePath: "/usr/bin/firefox", headless: true`). Map game coordinates to page clicks through the canvas's `getBoundingClientRect()`. In Firefox's protocol the space key is `" "`, not `"Space"`. Check the console for Lua errors.
 - **Real Steam (Linux, Steam running):** override `love.filesystem.getSource` to return the repo path, then `require("online.steam").init()`.
 
 ## About the user
