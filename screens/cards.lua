@@ -34,6 +34,8 @@ local function rarityIndex(id)
   return 1
 end
 
+-- Cards matching the filter, grouped by their configured rarity (so a card moved to
+-- another rarity sits with that rarity's cards), then in list order.
 function Screen:visibleCards()
   local f = FILTERS[self.filter]
   local list = {}
@@ -43,6 +45,11 @@ function Screen:visibleCards()
     if f.disabled and Settings.cardEnabled(c) then ok = false end
     if ok then list[#list + 1] = c end
   end
+  table.sort(list, function(a, b)
+    local ra, rb = rarityIndex(Settings.cardRarity(a)), rarityIndex(Settings.cardRarity(b))
+    if ra ~= rb then return ra < rb end
+    return a.index < b.index
+  end)
   return list
 end
 

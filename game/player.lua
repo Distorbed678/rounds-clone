@@ -5,14 +5,16 @@ local Bullet = require "game.bullet"
 local Player = {}
 Player.__index = Player
 
+-- Wall jump: upward speed (fraction of jump), push away from the wall (fraction of move
+-- speed) and how long steering is weakened afterwards.
+Player.WALL_JUMP = { up = 0.95, push = 0.6, lock = 0.1 }
+
 local GRAVITY = 1800
 local MAX_FALL = 1100
 local WALL_SLIDE = 120
 local ORB_DISTANCE = 55
 local ORB_SIZE = 9
-local WELL_RADIUS = 280
 local SHOCKWAVE_RADIUS = 170
-local STASIS_RADIUS = 160
 
 local BASE = {
   maxHp = 100, radius = 20,
@@ -22,15 +24,18 @@ local BASE = {
   fireDelay = 0.25, ammo = 3, reloadTime = 1.5,
   knockback = 250, lifesteal = 0, explosion = 0, poison = 0, homing = 0,
   blockCooldown = 4, blockTime = 0.3,
+  -- Card abilities are counts (copies held), so every card stacks; 0 = not owned.
   -- block effects
-  reflect = false, shockwave = 0, blockHeal = 0, blink = 0, empower = false,
-  parry = false, blockReload = false, cloak = 0, blockNova = 0,
+  reflect = 0, shockwave = 0, blockHeal = 0, blink = 0, empower = 0,
+  parry = 0, blockReload = 0, cloak = 0, blockNova = 0,
   -- special behaviours
-  lives = 0, split = false, bounceDamage = 0, distDamage = 0, accel = 0, decay = false,
-  recoil = 0, frost = 0, ghost = false, burst = 0, spinup = false, crit = 0, sticky = false,
-  orbs = 0, berserk = 0, martyr = 0, repel = 0, backShot = false, blackhole = false,
-  underdog = 0, scavenger = 0, laser = false, knockbackImmune = false, stasis = false,
+  lives = 0, split = 0, bounceDamage = 0, distDamage = 0, accel = 0, decay = 0,
+  recoil = 0, frost = 0, ghost = 0, burst = 0, spinup = 0, crit = 0, sticky = 0,
+  orbs = 0, berserk = 0, martyr = 0, repel = 0, backShot = 0, blackhole = 0,
+  underdog = 0, scavenger = 0, laser = 0, knockbackImmune = false, stasis = 0,
 }
+
+Player.stasisRadius = Bullet.stasisRadius
 
 local function approach(v, target, amount)
   if v < target then return math.min(v + amount, target) end
@@ -94,6 +99,7 @@ function Player:spawn(x, y, facing, game)
   self.slowTimer = 0
   self.cloakTimer = 0
   self.empowered = false
+  self.empowerShots = 0
   self.spin = 0
   self.burstLeft, self.burstTimer = 0, 0
   self.orbAngle = 0
@@ -198,8 +204,8 @@ function Player:update(dt, frozen)
     if w.owner ~= self then
       local dx, dy = w.x - self.x, w.y - self.y
       local d = math.sqrt(dx * dx + dy * dy)
-      if d > 1 and d < WELL_RADIUS then
-        local f = 3200 * (1 - d / WELL_RADIUS) * dt
+      if d > 1 and d < w.radius then
+        local f = w.strength * (1 - d / w.radius) * dt
         self.vx = self.vx + dx / d * f
         self.vy = self.vy + dy / d * f
         self.controlLock = math.max(self.controlLock, 0.05)
@@ -236,7 +242,8 @@ function Player:update(dt, frozen)
 
   local holding = not frozen and inp.fire
   if holding then self:tryFire() end
-  if not holding or self.ammo == 0 then self.spin = math.max(0, self.spin - dt * 1.5) end
+  -- Overclock copies make the ramp drain more slowly.
+  if not holding or self.ammo == 0 then self.spin = math.max(0, self.spin - dt * 1.5 / math.max(1, s.spinup)) end
 
   -- Echo shots
   if self.burstLeft > 0 then
@@ -330,10 +337,11 @@ function Player:jumpPressed()
     self.coyote = 0
     self.onGround = false
   elseif self.wallDir ~= 0 then
-    self.vy = -s.jump * 0.95
-    self.vx = -self.wallDir * s.speed * 1.2
+    local wj = Player.WALL_JUMP
+    self.vy = -s.jump * wj.up
+    self.vx = -self.wallDir * s.speed * wj.push
     self.facing = -self.wallDir
-    self.controlLock = 0.18
+    self.controlLock = wj.lock
     fx.burst(self.x + self.wallDir * self.r, self.y, { 0.8, 0.8, 0.8 }, 5, 120, 3)
   elseif self.jumpsLeft > 0 then
     self.jumpsLeft = self.jumpsLeft - 1
@@ -358,11 +366,15 @@ function Player:blockPressed()
     self:heal(s.blockHeal)
     fx.burst(self.x, self.y, { 0.4, 1, 0.5 }, 10, 160, 3)
   end
-  if s.blockReload then
-    self.ammo = s.ammo
+  if s.blockReload > 0 then
+    -- Extra Supply Drops overfill the magazine.
+    self.ammo = math.max(self.ammo, s.ammo + s.blockReload - 1)
     self.reloadTimer = 0
   end
-  if s.empower then self.empowered = true end
+  if s.empower > 0 then
+    self.empowered = true
+    self.empowerShots = s.empower
+  end
   if s.cloak > 0 then self.cloakTimer = s.cloak end
   if s.blink > 0 then self:blink(s.blink) end
 
@@ -411,8 +423,8 @@ function Player:tryFire()
   if self.fireTimer > 0 or self.ammo <= 0 then return end
 
   local delay = s.fireDelay
-  if s.spinup then
-    self.spin = math.min(1, self.spin + 0.12)
+  if s.spinup > 0 then
+    self.spin = math.min(1, self.spin + 0.12 * s.spinup)
     delay = delay / (1 + 2 * self.spin)
   end
   self.ammo = self.ammo - 1
@@ -431,7 +443,10 @@ end
 function Player:volley(primary)
   local s = self.stats
   local empowered = primary and self.empowered
-  if primary then self.empowered = false end
+  if empowered then
+    self.empowerShots = self.empowerShots - 1
+    self.empowered = self.empowerShots > 0
+  end
 
   local base = math.atan2(self.aimY, self.aimX)
   for i = 1, s.bullets do
@@ -440,7 +455,9 @@ function Player:volley(primary)
     local speedMul = s.bullets > 1 and (0.9 + love.math.random() * 0.2) or 1
     self:spawnBullet(ang, speedMul, empowered)
   end
-  if s.backShot then self:spawnBullet(base + math.pi, 1, empowered) end
+  for i = 1, s.backShot do
+    self:spawnBullet(base + math.pi + (i - (s.backShot + 1) / 2) * 0.18, 1, empowered)
+  end
 
   fx.burst(self.x + self.aimX * (self.r + 12), self.y + self.aimY * (self.r + 12), { 1, 0.95, 0.7 }, 4, 150, 2)
 
@@ -483,18 +500,28 @@ function Player:spawnBullet(ang, speedMul, empowered)
   game:addBullet(b)
 end
 
+-- An attack hit our block. Parry recharges the block; extra copies also heal.
+function Player:blocked()
+  local s = self.stats
+  if s.parry > 0 then
+    self.blockCd = 0
+    if s.parry > 1 then self:heal(10 * (s.parry - 1)) end
+  end
+end
+
 -- Returns true if damage landed (false when blocked, invulnerable or already dead).
 function Player:hit(amount, dx, dy, knock)
   if self.dead then return false end
   if self:isBlocking() then
     fx.burst(self.x, self.y, { 1, 1, 1 }, 8, 200, 3)
-    if self.stats.parry then self.blockCd = 0 end
+    self:blocked()
     return false
   end
   if self.invuln > 0 then return false end
 
-  if self.stats.decay then
-    table.insert(self.decay, { remaining = amount, rate = amount / 4 })
+  if self.stats.decay > 0 then
+    local duration = 4 + 2 * (self.stats.decay - 1)
+    table.insert(self.decay, { remaining = amount, rate = amount / duration })
   else
     self.hp = self.hp - amount
   end
@@ -596,12 +623,13 @@ function Player:draw()
     A = 0.4
   end
 
-  if s.stasis then
+  if s.stasis > 0 then
+    local sr = Player.stasisRadius(s.stasis)
     love.graphics.setColor(0.6, 0.8, 1, 0.06 * A)
-    love.graphics.circle("fill", self.x, self.y, STASIS_RADIUS)
+    love.graphics.circle("fill", self.x, self.y, sr)
     love.graphics.setColor(0.6, 0.8, 1, 0.15 * A)
     love.graphics.setLineWidth(1)
-    love.graphics.circle("line", self.x, self.y, STASIS_RADIUS)
+    love.graphics.circle("line", self.x, self.y, sr)
   end
 
   if self:isBlocking() then
@@ -684,9 +712,10 @@ function Player:draw()
     love.graphics.setColor(1, 1, 1, 0.8 * A)
     love.graphics.rectangle("fill", bx, py - 1, bw * (1 - self.reloadTimer / s.reloadTime), 3)
   else
-    local spacing = math.min(9, bw / math.max(1, s.ammo))
-    local startX = self.x - (s.ammo - 1) * spacing / 2
-    for i = 1, s.ammo do
+    local slots = math.max(s.ammo, self.ammo) -- Supply Drop can overfill
+    local spacing = math.min(9, bw / math.max(1, slots))
+    local startX = self.x - (slots - 1) * spacing / 2
+    for i = 1, slots do
       love.graphics.setColor(1, 1, 1, (i <= self.ammo and 0.9 or 0.2) * A)
       love.graphics.circle("fill", startX + (i - 1) * spacing, py, 2.5)
     end

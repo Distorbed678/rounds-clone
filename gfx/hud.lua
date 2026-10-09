@@ -139,6 +139,15 @@ function hud.drawCard(card, x, y, w, h, selected, ownerColor, rarityId)
     ly = ly + #wrapped * font:getHeight() + 10
   end
 
+  -- What extra copies do (for cards where it isn't just "the stats add up").
+  if card.stack then
+    local sf = app.fonts.small
+    love.graphics.setFont(sf)
+    local _, wrapped = sf:getWrap("Stacking: " .. card.stack, w - 28)
+    love.graphics.setColor(1, 1, 1, 0.5)
+    love.graphics.printf("Stacking: " .. card.stack, x + 14, y + h - 40 - #wrapped * sf:getHeight(), w - 28, "center")
+  end
+
   local label = rarity.name:upper()
   if card.block then label = label .. "  -  BLOCK" end
   love.graphics.setFont(app.fonts.small)
@@ -152,7 +161,7 @@ function hud.drawWells(wells)
     local k = math.max(0, math.min(1, w.t / 0.3, (w.max - w.t) / 0.15 + 0.2))
     local c = w.owner.color
     love.graphics.setColor(c[1], c[2], c[3], 0.08 * k)
-    love.graphics.circle("fill", w.x, w.y, 280)
+    love.graphics.circle("fill", w.x, w.y, w.radius or 280)
     love.graphics.setLineWidth(2)
     for i = 0, 2 do
       local rr = (22 + ((t * 60 + i * 20) % 60)) * k

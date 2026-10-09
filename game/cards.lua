@@ -1,5 +1,7 @@
 -- Upgrade cards. Each card has a rarity and either modifies a player's stats
 -- table in apply(), or is a "special" card resolved instantly when picked.
+-- Every card stacks: abilities are counted (one per copy), and `stack` describes
+-- what extra copies do when that isn't obvious from the stat lines.
 local Cards = {}
 
 Cards.RARITIES = {
@@ -74,7 +76,8 @@ Cards.list = {
   {
     name = "Supply Drop", rarity = "common", block = true,
     lines = { "+blocking instantly reloads", "-10% block cooldown" },
-    apply = function(s) s.blockReload = true; s.blockCooldown = s.blockCooldown * 0.9 end,
+    stack = "+1 bonus round above max ammo per extra copy",
+    apply = function(s) s.blockReload = s.blockReload + 1; s.blockCooldown = s.blockCooldown * 0.9 end,
   },
   {
     name = "Rocket Jump", rarity = "common",
@@ -94,7 +97,8 @@ Cards.list = {
   {
     name = "Rear Guard", rarity = "common",
     lines = { "+also fires a shot behind you" },
-    apply = function(s) s.backShot = true end,
+    stack = "+1 back shot per copy",
+    apply = function(s) s.backShot = s.backShot + 1 end,
   },
   {
     name = "Scavenger", rarity = "common",
@@ -143,7 +147,8 @@ Cards.list = {
   {
     name = "Empower", rarity = "uncommon", block = true,
     lines = { "+after blocking, your next shot deals double damage" },
-    apply = function(s) s.empower = true end,
+    stack = "+1 empowered shot per copy",
+    apply = function(s) s.empower = s.empower + 1 end,
   },
   {
     name = "Cloak", rarity = "uncommon", block = true,
@@ -168,7 +173,8 @@ Cards.list = {
   {
     name = "Overclock", rarity = "uncommon",
     lines = { "+fire rate ramps up to 3x while you hold fire" },
-    apply = function(s) s.spinup = true end,
+    stack = "ramps up faster and cools down slower per copy",
+    apply = function(s) s.spinup = s.spinup + 1 end,
   },
   {
     name = "Berserker", rarity = "uncommon",
@@ -213,8 +219,9 @@ Cards.list = {
   },
   {
     name = "Reflector", rarity = "rare", block = true,
-    lines = { "+blocked bullets fly back at the shooter" },
-    apply = function(s) s.reflect = true end,
+    lines = { "+bullets you block come back as 1 extra bullet" },
+    stack = "+1 extra reflected bullet per copy",
+    apply = function(s) s.reflect = s.reflect + 1 end,
   },
   {
     name = "Blink", rarity = "rare", block = true,
@@ -224,7 +231,8 @@ Cards.list = {
   {
     name = "Parry", rarity = "rare", block = true,
     lines = { "+blocking an attack instantly recharges your block" },
-    apply = function(s) s.parry = true end,
+    stack = "parries heal 10 HP per extra copy",
+    apply = function(s) s.parry = s.parry + 1 end,
   },
   {
     name = "Nova", rarity = "rare", block = true,
@@ -234,7 +242,8 @@ Cards.list = {
   {
     name = "Splitter", rarity = "rare",
     lines = { "+bullets split into 3 on their first wall hit" },
-    apply = function(s) s.split = true end,
+    stack = "splits again on 1 more wall hit per copy",
+    apply = function(s) s.split = s.split + 1 end,
   },
   {
     name = "Sniper", rarity = "rare",
@@ -244,12 +253,17 @@ Cards.list = {
   {
     name = "Decay", rarity = "rare",
     lines = { "+damage you take is dealt slowly over 4s" },
-    apply = function(s) s.decay = true end,
+    stack = "+2s longer per extra copy",
+    apply = function(s) s.decay = s.decay + 1 end,
   },
   {
     name = "Ghost Bullets", rarity = "rare",
     lines = { "+bullets pass through walls", "-15% damage" },
-    apply = function(s) s.ghost = true; s.damage = s.damage * 0.85 end,
+    stack = "+25% damage through walls per extra copy (penalty doesn't stack)",
+    apply = function(s)
+      if s.ghost == 0 then s.damage = s.damage * 0.85 end
+      s.ghost = s.ghost + 1
+    end,
   },
   {
     name = "Echo", rarity = "rare",
@@ -259,7 +273,8 @@ Cards.list = {
   {
     name = "Sticky Mines", rarity = "rare",
     lines = { "+spent bullets stick to walls as mines", "+mines explode near the enemy" },
-    apply = function(s) s.sticky = true end,
+    stack = "+40% mine trigger and blast radius per extra copy",
+    apply = function(s) s.sticky = s.sticky + 1 end,
   },
   {
     name = "Table Flip", rarity = "rare", special = "tableflip",
@@ -280,7 +295,8 @@ Cards.list = {
   {
     name = "Black Hole", rarity = "epic",
     lines = { "+bullet impacts open a black hole", "+black holes pull the enemy in" },
-    apply = function(s) s.blackhole = true end,
+    stack = "+30% pull radius and strength per extra copy",
+    apply = function(s) s.blackhole = s.blackhole + 1 end,
   },
   {
     name = "Juggernaut", rarity = "epic",
@@ -292,19 +308,21 @@ Cards.list = {
   },
   {
     name = "Stasis Field", rarity = "epic",
-    lines = { "+enemy bullets near you slow to a crawl" },
-    apply = function(s) s.stasis = true end,
+    lines = { "+enemy bullets near you slow down" },
+    stack = "+35% field radius per extra copy",
+    apply = function(s) s.stasis = s.stasis + 1 end,
   },
 
   ---------------------------------------------------------------- Legendary
   {
     name = "Laser", rarity = "legendary",
     lines = { "+your shots become instant laser beams", "+beams bounce off walls" },
-    apply = function(s) s.laser = true end,
+    stack = "+50% beam width and +20% damage per extra copy",
+    apply = function(s) s.laser = s.laser + 1 end,
   },
   {
     name = "Shrine of Order", rarity = "legendary", special = "shrine",
-    lines = { "All your cards of your most-held rarity become copies of one of them", "Card count stays the same" },
+    lines = { "For each rarity, all your cards of that rarity become copies of one of them", "Card count stays the same" },
   },
 }
 
@@ -408,33 +426,37 @@ function Cards.tableFlip(player)
   return string.format("PLAYER %d FLIPPED THE TABLE! %d cards rerolled", player.id, #player.cards)
 end
 
+-- Shrine of Order (as in Risk of Rain 2): for each rarity, every card you own of that
+-- rarity becomes a copy of one card type you already own of that rarity. Uses each
+-- card's current rarity, so cards moved to another rarity in the settings are grouped
+-- with the rarity they're in now.
 function Cards.shrine(player)
-  local counts = {}
-  for _, c in ipairs(player.cards) do counts[c.rarity] = (counts[c.rarity] or 0) + 1 end
+  local types, owned = {}, {} -- rarity id -> distinct card types / count owned
+  for _, c in ipairs(player.cards) do
+    local r = c.rarity
+    types[r] = types[r] or {}
+    owned[r] = (owned[r] or 0) + 1
+    local seen = false
+    for _, t in ipairs(types[r]) do
+      if t == c then seen = true end
+    end
+    if not seen then table.insert(types[r], c) end
+  end
 
-  local candidates, bestN = {}, 0
+  local changes = {}
   for _, r in ipairs(Cards.RARITIES) do
-    local n = counts[r.id] or 0
-    if n > bestN then
-      candidates, bestN = { r.id }, n
-    elseif n == bestN and n > 0 then
-      table.insert(candidates, r.id)
+    local list = types[r.id]
+    if list then
+      local chosen = list[love.math.random(#list)]
+      for i, c in ipairs(player.cards) do
+        if c.rarity == r.id then player.cards[i] = chosen end
+      end
+      changes[#changes + 1] = string.format("%d %s became %s", owned[r.id], r.name, chosen.name)
     end
   end
-  if bestN == 0 then return "The Shrine of Order found nothing to order" end
-  local rarity = candidates[love.math.random(#candidates)]
-
-  local owned = {}
-  for _, c in ipairs(player.cards) do
-    if c.rarity == rarity then owned[#owned + 1] = c end
-  end
-  local chosen = owned[love.math.random(#owned)]
-  for i, c in ipairs(player.cards) do
-    if c.rarity == rarity then player.cards[i] = chosen end
-  end
+  if #changes == 0 then return "The Shrine of Order found nothing to order" end
   player:recompute()
-  return string.format("SHRINE OF ORDER: %d %s card%s became %s",
-    bestN, Cards.rarity[rarity].name, bestN == 1 and "" or "s", chosen.name)
+  return "SHRINE OF ORDER: " .. table.concat(changes, ", ")
 end
 
 return Cards

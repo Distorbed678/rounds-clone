@@ -33,7 +33,7 @@ local function u16(v)
   return v
 end
 
-local PLAYER_FMT = "<fffbffBBfBBBBBfBfH"
+local PLAYER_FMT = "<fffbffBBfBBBBBfBfHBB" -- ..., score, stasis copies, match-over vote
 local BULLET_FMT = "<HhhhhBBB"
 
 function Snap.encode(world, events)
@@ -60,7 +60,7 @@ function Snap.encode(world, events)
   for _, p in ipairs(world.players) do
     local s = p.stats
     local flags = bit.bor(
-      p.dead and 1 or 0, p:isBlocking() and 2 or 0, p.empowered and 4 or 0, s.stasis and 8 or 0,
+      p.dead and 1 or 0, p:isBlocking() and 2 or 0, p.empowered and 4 or 0, 0,
       (p.poisonTimer or 0) > 0 and 16 or 0, (p.slowTimer or 0) > 0 and 32 or 0,
       (p.cloakTimer or 0) > 0 and 64 or 0, (p.hitFlash or 0) > 0 and 128 or 0)
     local pending = 0
@@ -71,7 +71,8 @@ function Snap.encode(world, events)
       p.x or 0, p.y or 0, math.atan2(p.aimY or 0, p.aimX or 1), p.facing or 1,
       p.hp or 0, s.maxHp, u8(p.r), flags,
       p.invuln or 0, u8(p.ammo), u8(s.ammo), reload, u8(255 * (p.blockCd or 0) / s.blockCooldown),
-      u8(s.orbs), p.orbAngle or 0, u8(p.livesLeft), pending, u16(p.score))
+      u8(s.orbs), p.orbAngle or 0, u8(p.livesLeft), pending, u16(p.score),
+      u8(s.stasis), (world.votes and world.votes[p.slot]) or 0)
   end
 
   local bullets = world.bullets
@@ -83,6 +84,7 @@ function Snap.encode(world, events)
     local flags = bit.bor(b.ghost and 1 or 0, b.mine and 2 or 0, b.laser and 4 or 0,
       (b.mine and b.armTime <= 0) and 8 or 0)
     add(BULLET_FMT, b.id or 0, i16(b.x), i16(b.y), i16(b.vx), i16(b.vy), u8(b.r * 4), colorIdx, flags)
+    if b.mine then add("<B", u8((b.trigger or 85) / 2)) end
     if b.laser then
       local pts = b.points or {}
       local np = math.min(#pts, MAX_LASER_POINTS)
@@ -95,7 +97,7 @@ function Snap.encode(world, events)
   add("<B", math.min(#wells, 255))
   for i = 1, math.min(#wells, 255) do
     local w = wells[i]
-    add("<hhffB", i16(w.x), i16(w.y), w.t, w.max, w.owner.slot or 0)
+    add("<hhffBH", i16(w.x), i16(w.y), w.t, w.max, w.owner.slot or 0, u16(w.radius))
   end
 
   events = events or {}
@@ -146,11 +148,10 @@ function Snap.decode(data)
     local flags
     p.x, p.y, p.aim, p.facing, p.hp, p.maxHp, p.r, flags,
     p.invuln, p.ammo, p.maxAmmo, p.reload, p.blockCd,
-    p.orbs, p.orbAngle, p.lives, p.pending, p.score, pos = unpack(PLAYER_FMT, raw, pos)
+    p.orbs, p.orbAngle, p.lives, p.pending, p.score, p.stasis, p.vote, pos = unpack(PLAYER_FMT, raw, pos)
     p.dead = bit.band(flags, 1) ~= 0
     p.blocking = bit.band(flags, 2) ~= 0
     p.empowered = bit.band(flags, 4) ~= 0
-    p.stasis = bit.band(flags, 8) ~= 0
     p.poisoned = bit.band(flags, 16) ~= 0
     p.slowed = bit.band(flags, 32) ~= 0
     p.cloaked = bit.band(flags, 64) ~= 0
@@ -169,6 +170,11 @@ function Snap.decode(data)
     b.mine = bit.band(flags, 2) ~= 0
     b.laser = bit.band(flags, 4) ~= 0
     b.armed = bit.band(flags, 8) ~= 0
+    if b.mine then
+      local t
+      t, pos = unpack("<B", raw, pos)
+      b.trigger = t * 2
+    end
     if b.laser then
       local beam, npts
       beam, npts, pos = unpack("<BB", raw, pos)
@@ -187,7 +193,7 @@ function Snap.decode(data)
   nw, pos = unpack("<B", raw, pos)
   for i = 1, nw do
     local w = {}
-    w.x, w.y, w.t, w.max, w.slot, pos = unpack("<hhffB", raw, pos)
+    w.x, w.y, w.t, w.max, w.slot, w.radius, pos = unpack("<hhffBH", raw, pos)
     v.wells[i] = w
   end
 

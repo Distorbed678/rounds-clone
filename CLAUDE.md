@@ -41,7 +41,7 @@ The LÖVE runtimes and appimagetool are downloaded once into `build/cache/` (git
 | `core/input.lua` | Input sources: `keys(binds)` (local), `mouse(binds)` (online, mouse aim), `remote()`. Bindings are the live `Settings.values.binds.{p1,p2,online}` tables (keys or `mouse1`..`mouse5`). Jump and block use **press counters** (`jumpCount`, `blockCount`), not events. `pickHover` carries the picker's selection to the host. |
 | `core/settings.lua` | Persisted settings, key binding (`Settings.bind` swaps conflicts), window/VSync application, and `Settings.cardRules()` (gameplay rules from the settings). |
 | `game/world.lua` | **Authoritative simulation**: players, bullets, wells, round flow (`countdown → playing → roundOver → cardPick → matchOver`), sequential card picks (`pickQueue` → `pick`, lowest score first, `picksPerRound` each), continue/new match, disconnects. `World.rules` holds the gameplay rules. It emits `world.on.{toast,roster,pick,matchOver}`. |
-| `game/player.lua` / `game/bullet.lua` | Gameplay. Players read `self.input` (see `core/input.lua`), never the keyboard directly. `self.game` is the World. |
+| `game/player.lua` / `game/bullet.lua` | Gameplay. Players read `self.input` (see `core/input.lua`), never the keyboard directly. `self.game` is the World. Blocking reflects any enemy bullet (`Bullet:hitPlayer`); `Player:blocked()` handles Parry. |
 | `game/cards.lua` | Card list with rarities and specials (`reroll`, `tableflip`, `shrine`). `card.index` is used over the network and `card.id` (from the name) in the settings file. `Cards.applyRules(rules)` sets each card's current `rarity`/`disabled` and the rarity weights used by `deal`; `card.baseRarity` is the default. |
 | `game/map.lua` | Arenas. |
 | `gfx/fx.lua`, `gfx/bloom.lua`, `gfx/hud.lua` | Particles (with network recorder), bloom pass, HUD/card drawing. |
@@ -57,10 +57,12 @@ The LÖVE runtimes and appimagetool are downloaded once into `build/cache/` (git
 - Clients don't simulate. They build proxy tables with the `Player`/`Bullet` metatables and reuse the same `draw()` code.
 - **If you add a field that `Player:draw`/`Bullet:draw` reads, add it to `online/snapshot.lua` and `Match:applySnapshot` (`screens/match.lua`)**, or clients won't see it.
 - Card picks are sequential. The current pick (slot, serial, hover, options, queue) travels in every snapshot so everyone watches it. The picker's hover rides in INPUT (`pickHover`) and the choice is CHOOSE(index, serial); a stale serial is ignored.
+- Match-over votes: clients send VOTE (continue / new match); the host's `world.votes` travels in the snapshot (one byte per player) and the host's buttons show the tally. Votes are only a suggestion; the host's buttons decide.
 - Gameplay rules (cards offered, picks per round, rarity weights, per-card rarity/disabled) come from the **host's** settings: the host sends RULES after START and again on New Match, and clients call `Cards.applyRules`. Local play and the host build them with `Settings.cardRules()`.
 
 ## Rules and gotchas
 - **Bump `session.PROTOCOL`** whenever the wire format, card order (`Cards.list` indices) or map list changes. Peers with different versions refuse to join.
+- **Every card must stack.** Card abilities in `BASE` (player.lua) are **counts of copies, never booleans** (0 = not owned; remember `0` is truthy in Lua, so test `> 0`). When extra copies don't simply add to a stat, give the card a `stack` line describing what they do; `hud.drawCard` shows it. Bullets keep boolean flags (`ghost`, `laser`, `mine`) for drawing and snapshots, with the copy count alongside (`ghostLevel`, `sticky`, `blackhole`, `splitsLeft`).
 - New gameplay effects must work with up to 4 players. Use `world:enemiesOf(p)` and `world:nearestEnemy(p, x, y)`, never assume a single opponent.
 - Every map needs 4 spawns (`spawns[1..4]`).
 - `fx.*` calls on the host are recorded into `fx.recorder` and replayed on clients. Keep fx calls deterministic in shape (`burst`, `ring`, `addShake`, `clear`).

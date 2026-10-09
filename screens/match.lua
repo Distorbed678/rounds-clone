@@ -239,7 +239,8 @@ function Match:newProxy(slot, name)
   return setmetatable({
     id = slot, slot = slot, name = name, color = World.COLORS[slot],
     cards = {}, score = 0,
-    stats = { maxHp = 100, ammo = 3, reloadTime = 1, blockCooldown = 1, orbs = 0, stasis = false },
+    stats = { maxHp = 100, ammo = 3, reloadTime = 1, blockCooldown = 1, orbs = 0, stasis = 0 },
+    vote = 0,
     decay = { { remaining = 0 } },
     x = -1000, y = -1000, r = 20, aimX = 1, aimY = 0, facing = 1,
     hp = 100, ammo = 3, reloadTimer = 0, blockTimer = 0, blockCd = 0,
@@ -288,6 +289,7 @@ function Match:applySnapshot(v)
     p.score = pv.score
     local s = p.stats
     s.maxHp, s.ammo, s.orbs, s.stasis = pv.maxHp, pv.maxAmmo, pv.orbs, pv.stasis
+    p.vote = pv.vote
   end
 
   local views, list = {}, {}
@@ -300,6 +302,7 @@ function Match:applySnapshot(v)
     b.r = bv.r
     b.color = bv.colorIdx == 5 and Bullet.CRIT_COLOR or (World.COLORS[bv.colorIdx] or { 1, 1, 1 })
     b.ghost, b.mine, b.laser = bv.ghost, bv.mine, bv.laser
+    b.trigger = bv.trigger
     b.armTime = bv.armed and 0 or 1
     if bv.laser then
       b.points = bv.points
@@ -313,7 +316,7 @@ function Match:applySnapshot(v)
   self.wellList = {}
   for _, w in ipairs(v.wells) do
     self.wellList[#self.wellList + 1] = {
-      x = w.x, y = w.y, t = w.t, max = w.max,
+      x = w.x, y = w.y, t = w.t, max = w.max, radius = w.radius,
       owner = { color = World.COLORS[w.slot] or { 1, 1, 1 } },
     }
   end
@@ -413,6 +416,8 @@ function Match:hostNetwork(dt)
           end
           if scratch.pickHover > 0 then self.world:hover(info.slot, scratch.pickHover) end
         end
+      elseif kind == net.MSG.VOTE then
+        self.world:vote(info.slot, net.decodeVote(msg.data))
       elseif kind == net.MSG.CHOOSE then
         local index, serial = net.decodeChoose(msg.data)
         self.world:choose(info.slot, index, serial)
@@ -486,6 +491,7 @@ function Match:update(dt, isTop)
 
   if self.role ~= "local" then
     local st = self:status().state
+    if st ~= "matchOver" then self.pendingVote = nil end
     local playing = isTop and not self.paused and (st == "countdown" or st == "playing" or st == "roundOver")
     love.mouse.setVisible(not playing)
   end
@@ -625,6 +631,42 @@ function Match:drawCardPick(st)
   end
 end
 
+-- slot -> World.VOTE_* (online only; the host's world, or the clients' snapshots).
+function Match:votes()
+  if self.role == "client" then
+    local v = {}
+    for i, p in ipairs(self.proxies) do
+      if (p.vote or 0) > 0 then v[i] = p.vote end
+    end
+    return v
+  end
+  return self.world.votes
+end
+
+-- "Alice: Continue   Bob: New Match", each name in its player colour.
+function Match:drawVotes(y)
+  local players = self:players()
+  local text = {}
+  for i, p in ipairs(players) do
+    local v = self:votes()[i]
+    if v then
+      if #text > 0 then table.insert(text, { 1, 1, 1, 0.5 }); table.insert(text, "      ") end
+      table.insert(text, p.color)
+      table.insert(text, (p.name or ("Player " .. i)) .. ": ")
+      table.insert(text, { 1, 1, 1, 0.85 })
+      table.insert(text, World.VOTE_NAMES[v])
+    end
+  end
+  love.graphics.setFont(app.fonts.med)
+  if #text == 0 then
+    love.graphics.setColor(1, 1, 1, 0.45)
+    love.graphics.printf("No votes yet", 0, y, app.W, "center")
+  else
+    love.graphics.setColor(1, 1, 1)
+    love.graphics.printf(text, 0, y, app.W, "center")
+  end
+end
+
 function Match:drawMatchOver(st)
   love.graphics.setColor(0, 0, 0, 0.7)
   love.graphics.rectangle("fill", 0, 0, app.W, app.H)
@@ -636,18 +678,41 @@ function Match:drawMatchOver(st)
   for _, p in ipairs(self:players()) do scores[#scores + 1] = tostring(p.score) end
   app.centered(table.concat(scores, "  -  "), app.fonts.big, 280)
 
+  local x, w, h = app.W / 2 - 280, 560, 52
+  local nextScore = st.winScore + World.CONTINUE_ROUNDS
+  local continueText = "Continue  (+" .. World.CONTINUE_ROUNDS .. " rounds, first to " .. nextScore .. ")"
+
   if self.role == "client" then
-    app.centered("Waiting for the host to continue...", app.fonts.med, 400, { 1, 1, 1, 0.7 })
+    -- Players vote; the host sees the tally and decides.
+    local mine = self:votes()[self.mySlot] or self.pendingVote
+    local me = self:players()[self.mySlot]
+    local function voteButton(label, choice, y)
+      local chosen = mine == choice
+      if ui.button((chosen and "> " or "") .. label, x, y, w, h, { color = chosen and me and me.color or nil }) then
+        self.pendingVote = choice
+        self.transport:send(self.hostPeer, net.encodeVote(choice), true)
+      end
+    end
+    app.centered("Vote for what's next - the host decides", app.fonts.med, 335, { 1, 1, 1, 0.7 })
+    voteButton(continueText, World.VOTE_CONTINUE, 370)
+    voteButton("New Match", World.VOTE_NEW, 432)
+    self:drawVotes(510)
     return
   end
-  local x, w, h = app.W / 2 - 220, 440, 52
-  local nextScore = st.winScore + World.CONTINUE_ROUNDS
-  if ui.button("Continue  (+" .. World.CONTINUE_ROUNDS .. " rounds, first to " .. nextScore .. ")", x, 370, w, h) then
+  self.pendingVote = nil
+
+  local tally = World.tally(self:votes())
+  local function withVotes(label, n)
+    if self.role == "local" or n == 0 then return label end
+    return label .. "   -   " .. n .. (n == 1 and " vote" or " votes")
+  end
+  if ui.button(withVotes(continueText, tally[World.VOTE_CONTINUE]), x, 370, w, h) then
     self.world:continueMatch()
   end
-  if ui.button("New Match", x, 432, w, h) then self:newMatch() end
+  if ui.button(withVotes("New Match", tally[World.VOTE_NEW]), x, 432, w, h) then self:newMatch() end
   if self.role == "host" then
     if ui.button("Back to Lobby", x, 494, w, h) then self:backToLobby() end
+    self:drawVotes(568)
   else
     if ui.button("Main Menu", x, 494, w, h) then app.switch(require("screens.menu").new()) end
   end

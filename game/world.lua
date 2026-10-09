@@ -16,6 +16,10 @@ World.COLORS = {
 }
 World.CONTINUE_ROUNDS = 3
 
+-- Match-over votes (a suggestion to the host): 0 none, 1 continue, 2 new match.
+World.VOTE_CONTINUE, World.VOTE_NEW = 1, 2
+World.VOTE_NAMES = { "Continue", "New Match" }
+
 -- Toast colour codes (also sent over the network): 0 white, 1-4 player slot, 5 legendary.
 function World.toastColor(code)
   if code and code >= 1 and code <= 4 then return World.COLORS[code] end
@@ -35,6 +39,7 @@ function World.new(defs, winScore, rules)
     pick = nil,       -- the card pick in progress: { slot, options, hover, num, total, serial }
     pickQueue = {},   -- upcoming picks: { slot, num, total }
     pickSerial = 0,   -- bumped on every new hand (u8), so stale choices can be ignored
+    votes = {},       -- slot -> World.VOTE_* while the match is over
     on = {},
   }, World)
   for i, d in ipairs(defs) do
@@ -158,6 +163,7 @@ end
 function World:afterRound()
   if self.roundWinner and self.roundWinner.score >= self.winScore then
     self.state = "matchOver"
+    self.votes = {}
     self:emit("matchOver", self.roundWinner)
   else
     self:openPicks()
@@ -258,14 +264,32 @@ function World:setRules(rules)
   self.rules = rules
 end
 
+-- A player's match-over vote. The host sees the tally but still decides.
+function World:vote(slot, choice)
+  local p = self.players[slot]
+  if self.state ~= "matchOver" or not p or p.disconnected then return end
+  if choice == World.VOTE_CONTINUE or choice == World.VOTE_NEW then self.votes[slot] = choice end
+end
+
+-- { [World.VOTE_CONTINUE] = n, [World.VOTE_NEW] = n }
+function World.tally(votes)
+  local t = { 0, 0 }
+  for _, v in pairs(votes) do
+    if t[v] then t[v] = t[v] + 1 end
+  end
+  return t
+end
+
 function World:continueMatch()
   if self.state ~= "matchOver" then return end
+  self.votes = {}
   self.winScore = self.winScore + World.CONTINUE_ROUNDS
   self:toast("CONTINUE! First to " .. self.winScore)
   self:openPicks()
 end
 
 function World:newMatch()
+  self.votes = {}
   for _, p in ipairs(self.players) do
     p.cards = {}
     p.score = 0

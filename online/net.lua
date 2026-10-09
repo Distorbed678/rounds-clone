@@ -16,6 +16,7 @@ net.MSG = {
   CHOOSE = 6,   -- client -> host: chosen option (the current pick itself travels in snapshots)
   TOAST = 7,    -- host -> clients: message banner
   TOLOBBY = 8,  -- host -> clients: return to the lobby
+  VOTE = 9,     -- client -> host: match-over vote (continue / new match)
 }
 local M = net.MSG
 
@@ -146,6 +147,15 @@ function net.decodeRules(data, rarities)
     rules.disabled[i] = b >= 128 or nil
   end
   return rules
+end
+
+function net.encodeVote(choice)
+  return pack("string", "<BB", M.VOTE, choice)
+end
+
+function net.decodeVote(data)
+  local _, choice = unpack("<BB", data)
+  return choice
 end
 
 ---------------------------------------------------------------- misc
