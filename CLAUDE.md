@@ -15,7 +15,7 @@ A clone of the game ROUNDS: 2D side-view duels where the round loser picks an up
 - `RoundsClone-x86_64.AppImage`: LÖVE's AppImage with `RoundsClone.love` and the Steam `.so` files at the AppDir root. `FUSE_PATH` is set in `AppRun`, so the game runs fused.
 - `RoundsClone-windows-x64.zip`: `RoundsClone.exe` (love.exe with the .love appended), LÖVE's DLLs and the Steam DLLs.
 - `web/`: `npx love.js@11.4.1 -c` output (compatibility mode: no SharedArrayBuffer, so it works on GitHub Pages) with `web/index.html` replacing love.js's page. The page sizes the canvas drawing buffer to its on-screen size and sends a `resize` event so LÖVE renders at native resolution. It also stops `fullscreenchange` events before SDL sees them, because otherwise SDL treats the page's fullscreen as its own and stops following the canvas size.
-- **GitHub Pages:** `.github/workflows/pages.yml` runs `./build.sh web` and deploys `dist/web` on every published release (and on manual dispatch). Live at https://distorbed678.github.io/rounds-clone/.
+- **GitHub Pages:** `.github/workflows/pages.yml` runs `./build.sh web` and deploys `dist/web` on every published release (and on manual dispatch). Live at https://distorbed678.github.io/rounds-clone/. The `github-pages` environment allows deploys from `main` and from tags matching `v*` (releases run from their tag); a new tag scheme needs adding under Settings → Environments.
 
 The LÖVE runtimes and appimagetool are downloaded once into `build/cache/` (gitignored). If you add asset folders, make sure `build_love` doesn't exclude them.
 
