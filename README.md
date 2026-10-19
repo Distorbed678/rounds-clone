@@ -124,7 +124,7 @@ Output goes to `dist/`:
 | `RoundsClone.love` | The game files only. Runs anywhere with `love RoundsClone.love`, but without Steam libraries. |
 | `web/` | The browser version: [love.js](https://github.com/Davidobot/love.js) (LÖVE compiled to WebAssembly) with the game, using the page in `web/index.html`. Serve the folder over HTTP to test it locally, e.g. `python3 -m http.server -d dist/web`. |
 
-Every published GitHub release also runs `.github/workflows/pages.yml`, which builds the browser version and deploys it to GitHub Pages. You can also run that workflow by hand from the Actions tab.
+Pushing a version tag (`git tag -a v1.2.3 --cleanup=verbatim -F notes.md && git push origin v1.2.3`) runs `.github/workflows/release.yml`, which builds both packages on Linux, publishes the GitHub release with the tag message as its notes (plus downloads and SHA-256 checksums), and then runs `.github/workflows/pages.yml` to deploy the browser version to GitHub Pages. You can also run the Pages workflow by hand from the Actions tab.
 
 The LÖVE 11.5 runtimes and `appimagetool` are downloaded once from their official GitHub releases into `build/cache/`.
 

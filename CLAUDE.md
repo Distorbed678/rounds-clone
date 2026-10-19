@@ -16,7 +16,7 @@ A clone of the game ROUNDS: 2D side-view duels where the round loser picks an up
 - `RoundsClone-windows-x64.zip`: `RoundsClone.exe` (love.exe with the .love appended), LÖVE's DLLs, the Steam DLLs and `web/`.
 - Both desktop packages carry the browser build in `web/` (`copy_web`; the web build runs first) so a LAN host can serve it to browsers.
 - `web/`: `npx love.js@11.4.1 -c` output (compatibility mode: no SharedArrayBuffer, so it works on GitHub Pages) with `web/index.html` replacing love.js's page. The page sizes the canvas drawing buffer to its on-screen size and sends a `resize` event so LÖVE renders at native resolution. It also stops `fullscreenchange` events before SDL sees them, because otherwise SDL treats the page's fullscreen as its own and stops following the canvas size.
-- **GitHub Pages:** `.github/workflows/pages.yml` runs `./build.sh web` and deploys `dist/web` on every published release (and on manual dispatch). Live at https://distorbed678.github.io/rounds-clone/. The `github-pages` environment allows deploys from `main` and from tags matching `v*` (releases run from their tag); a new tag scheme needs adding under Settings → Environments.
+- **GitHub Pages:** `.github/workflows/pages.yml` runs `./build.sh web` and deploys `dist/web` on every published release and on manual dispatch (`release.yml` dispatches it, because a release created with the workflow token doesn't fire the release event). Live at https://distorbed678.github.io/rounds-clone/. The `github-pages` environment allows deploys from `main` and from tags matching `v*` (releases run from their tag); a new tag scheme needs adding under Settings → Environments.
 
 The LÖVE runtimes and appimagetool are downloaded once into `build/cache/` (gitignored). If you add asset folders, make sure `build_love` doesn't exclude them.
 
@@ -24,16 +24,14 @@ The LÖVE runtimes and appimagetool are downloaded once into `build/cache/` (git
 **After every bug fix or change, commit it, push it and publish a GitHub release, unless the user says not to commit or release yet.**
 1. Run the relevant checks first (syntax check, headless harnesses, screenshots).
 2. Commit with a descriptive message and push to `main`. If the push can't find credentials (the global `credential.helper` is `cache`), push with `git -c credential.helper= -c credential.helper='!gh auth git-credential' push origin main`.
-3. Run `./build.sh all`, then smoke-test the AppImage: launch it and confirm it loads the bundled Steam libraries. If the change could affect the browser version, also test `dist/web` in headless Firefox (see Testing).
-4. Create the release:
+3. Publish by pushing an annotated version tag (works from Windows or Linux, no `gh` needed locally). `.github/workflows/release.yml` then runs `./build.sh all` on Linux, checks both packages contain the game, the Steam libraries and `web/`, creates the release with both files, and starts the Pages deploy:
 
-       gh release create vX.Y.Z dist/RoundsClone-x86_64.AppImage dist/RoundsClone-windows-x64.zip \
-         --repo Distorbed678/rounds-clone --target "$(git rev-parse HEAD)" --title "Rounds Clone vX.Y.Z" --notes-file <notes.md>
+       git tag -a vX.Y.Z --cleanup=verbatim -F <notes.md> && git push origin vX.Y.Z
 
-   - `--target` needs the full commit SHA.
-   - The release notes cover: what was fixed or changed, whether online play is still compatible with the previous version (if `session.PROTOCOL` was bumped, say so), the download table, and SHA-256 checksums of both files.
-5. Versioning: bump the patch version (v0.1.1 → v0.1.2) for fixes and small changes, and the minor version (v0.1.x → v0.2.0) for feature batches. Check the latest tag with `gh release list --repo Distorbed678/rounds-clone`.
-6. The release also deploys the browser version (Pages workflow). Check it with `gh run list --repo Distorbed678/rounds-clone --workflow pages.yml --limit 1`.
+   - The tag message is the release notes: what was fixed or changed, and whether online play is still compatible with the previous version (if `session.PROTOCOL` was bumped, say so). The workflow appends the download table and SHA-256 checksums. `--cleanup=verbatim` keeps `#` headings (git would strip them as comments).
+   - On Linux you can still build and smoke-test locally first (`./build.sh all`, launch the AppImage and confirm it loads the bundled Steam libraries). If the change could affect the browser version, test a web build in headless Firefox/Chrome (see Testing).
+4. Versioning: bump the patch version (v0.1.1 → v0.1.2) for fixes and small changes, and the minor version (v0.1.x → v0.2.0) for feature batches. Check the latest tag with `git ls-remote --tags origin`.
+5. Check the runs: `gh run list --repo Distorbed678/rounds-clone --limit 2`, or without `gh`, `curl -s https://api.github.com/repos/Distorbed678/rounds-clone/actions/runs?per_page=3` (public repo).
 
 ## Architecture
 `main.lua` and `conf.lua` stay at the repo root (LÖVE requires it). Modules are required by dotted path, e.g. `require "game.world"`, `require "online.net"`.
