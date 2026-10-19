@@ -6,7 +6,7 @@ local Settings = require "core.settings"
 local Cards = require "game.cards"
 local Map = require "game.map"
 local Input = require "core.input"
-local session = require "online.session"
+local active = require "online.active"
 local platform = require "core.platform"
 
 local Screen = {}
@@ -33,6 +33,7 @@ end
 
 function Screen:close()
   Settings.save()
+  local session = active.get()
   if session.isHost and session.inLobby() then session.publishRules(Settings.values) end
   app.pop()
 end

@@ -65,7 +65,7 @@
     <kbd>P2</kbd> arrows move/aim, <kbd>R-Ctrl</kbd> fire, <kbd>R-Shift</kbd> block
     &nbsp;&middot;&nbsp;
     <kbd>Esc</kbd> menu (keys can be changed in Settings)<br>
-    Local play only in the browser. Settings are saved in this browser.
+    LAN play: open the browser address shown in a desktop host's LAN lobby. Settings are saved in this browser.
   </footer>
 
   <script>
@@ -116,9 +116,92 @@
       if ([8, 9, 32, 37, 38, 39, 40].indexOf(e.keyCode) > -1) e.preventDefault();
     }, false);
 
+    // LAN play (see online/webbridge.lua). The game prints "\x1bLAN <command> ..." lines; each
+    // command rewrites /tmp/rclan.bin in the game's in-memory filesystem with the connection state
+    // and every message not yet acknowledged: [u8 state][u32 first seq][u16 detail length][detail]
+    // then [u32 length][bytes] per message. States: 0 idle, 1 connecting, 2 open, 3 closed,
+    // 4 unavailable. LAN games are joined on the desktop host that served this page, which only
+    // works over http:// (browsers block ws:// from an https:// page).
+    var lan = { ws: null, state: 0, detail: "", queue: [], firstSeq: 1, ping: null };
+    var lanAvailable = location.protocol === "http:";
+    var LAN_PING = 204; // keeps the host from timing us out while this tab is in the background
+
+    function lanReset(state, detail) {
+      if (lan.ws) { lan.ws.onopen = lan.ws.onmessage = lan.ws.onclose = lan.ws.onerror = null; lan.ws.close(); }
+      if (lan.ping) clearInterval(lan.ping);
+      lan.ws = null; lan.ping = null; lan.state = state; lan.detail = detail || "";
+      lan.firstSeq += lan.queue.length; lan.queue = [];
+    }
+
+    function lanOpen() {
+      lanReset(1, "");
+      lan.firstSeq = 1;
+      if (!lanAvailable) { lan.state = 4; lan.detail = "This page can't join LAN games"; return; }
+      var ws = new WebSocket("ws://" + location.host + "/lan");
+      ws.binaryType = "arraybuffer";
+      ws.onopen = function () {
+        lan.state = 2;
+        lan.ping = setInterval(function () { if (ws.readyState === 1) ws.send(new Uint8Array([LAN_PING])); }, 1000);
+      };
+      ws.onmessage = function (e) { lan.queue.push(new Uint8Array(e.data)); };
+      ws.onclose = function () {
+        lan.detail = lan.state === 1 ? "Couldn't connect to the host at " + location.host : "Lost the connection to the host";
+        lan.state = 3;
+        if (lan.ping) clearInterval(lan.ping);
+      };
+      lan.ws = ws;
+    }
+
+    function lanSend(b64) {
+      if (!b64 || !lan.ws || lan.ws.readyState !== 1) return;
+      var bin = atob(b64), bytes = new Uint8Array(bin.length);
+      for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+      var view = new DataView(bytes.buffer), pos = 0;
+      while (pos + 4 <= bytes.length) {
+        var len = view.getUint32(pos, true);
+        lan.ws.send(bytes.subarray(pos + 4, pos + 4 + len));
+        pos += 4 + len;
+      }
+    }
+
+    function lanWrite() {
+      var detail = new TextEncoder().encode(lan.detail), size = 7 + detail.length;
+      lan.queue.forEach(function (m) { size += 4 + m.length; });
+      var buf = new Uint8Array(size), view = new DataView(buf.buffer);
+      buf[0] = lan.state;
+      view.setUint32(1, lan.firstSeq, true);
+      view.setUint16(5, detail.length, true);
+      buf.set(detail, 7);
+      var pos = 7 + detail.length;
+      lan.queue.forEach(function (m) { view.setUint32(pos, m.length, true); buf.set(m, pos + 4); pos += 4 + m.length; });
+      try { Module.FS_unlink("/tmp/rclan.bin"); } catch (e) {}
+      Module.FS_createDataFile("/tmp", "rclan.bin", buf, true, true, true);
+    }
+
+    function lanCommand(line) {
+      var parts = line.split(" ");
+      var cmd = parts[1];
+      if (cmd === "info") {
+        if (!lan.ws) { lan.state = lanAvailable ? 0 : 4; lan.detail = lanAvailable ? location.host : "This page can't join LAN games"; }
+      } else if (cmd === "open") {
+        lanOpen();
+      } else if (cmd === "sync") {
+        var ack = parseInt(parts[2], 10) || 0;
+        while (lan.queue.length && lan.firstSeq <= ack) { lan.queue.shift(); lan.firstSeq++; }
+        lanSend(parts[3]);
+      } else if (cmd === "close") {
+        lanReset(0, "");
+      }
+      lanWrite();
+    }
+
     var Module = {
       arguments: ["./game.love"],
       INITIAL_MEMORY: 67108864,
+      print: function (text) {
+        if (text.lastIndexOf("\x1bLAN ", 0) === 0) lanCommand(text);
+        else console.log(text);
+      },
       printErr: console.error.bind(console),
       canvas: (function () {
         canvas.addEventListener("webglcontextlost", function (e) {

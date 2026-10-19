@@ -1,8 +1,8 @@
--- The Steam lobby: members, lobby code, invites, and the host's Start button.
+-- The lobby (Steam or LAN, whichever online/active.lua holds): members, how others can join
+-- (Steam: lobby code and invites; LAN: the host's address), and the host's Start button.
 local app = require "core.app"
 local ui = require "core.ui"
-local steam = require "online.steam"
-local session = require "online.session"
+local active = require "online.active"
 local Settings = require "core.settings"
 local World = require "game.world"
 local net = require "online.net"
@@ -16,12 +16,12 @@ end
 
 function Lobby:enter()
   love.mouse.setVisible(true)
-  self.friends = session.friendsOnline()
+  self.friends = active.get().kind == "steam" and active.get().friendsOnline() or {}
   self.invited = {}
 end
 
 local function toMenu(message)
-  session.leave()
+  active.get().leave()
   app.switch(require("screens.menu").new(message))
 end
 
@@ -30,6 +30,7 @@ function Lobby:keypressed(key)
 end
 
 function Lobby:start()
+  local session = active.get()
   local slots = {}
   for i, m in ipairs(session.members) do
     if i > session.MAX_PLAYERS then break end
@@ -42,6 +43,7 @@ function Lobby:start()
 end
 
 function Lobby:update(dt)
+  local session = active.get()
   if not session.inLobby() then
     app.switch(require("screens.menu").new(session.error or "You left the lobby"))
     return
@@ -58,7 +60,7 @@ function Lobby:update(dt)
   for i, msg in ipairs(msgs) do
     if not session.isHost and msg.from == session.hostId and net.kind(msg.data) == net.MSG.START then
       local winScore, slots = net.decodeStart(msg.data)
-      local me = steam.myId()
+      local me = session.myId()
       local mySlot
       for k, s in ipairs(slots) do
         if s.peer == me then mySlot = k end
@@ -74,7 +76,7 @@ function Lobby:update(dt)
   end
 
   self.friendTimer = self.friendTimer + dt
-  if self.friendTimer > 5 then
+  if session.kind == "steam" and self.friendTimer > 5 then
     self.friendTimer = 0
     self.friends = session.friendsOnline()
   end
@@ -83,12 +85,14 @@ end
 
 -- "First to 5  -  pick 1 of 3 cards" (the host's rules, from the lobby data).
 function Lobby.rulesText()
+  local session = active.get()
   local picks = session.picks > 1 and (session.picks .. " picks of ") or "pick 1 of "
   return "First to " .. session.rounds .. "  -  " .. picks .. session.pickFrom .. " cards"
 end
 
 function Lobby:draw()
-  app.centered("LOBBY", app.fonts.big, 28)
+  local session = active.get()
+  app.centered(session.kind == "lan" and "LAN LOBBY" or "LOBBY", app.fonts.big, 28)
 
   -- Players
   local lx, ly, lw, lh = 60, 90, 560, 380
@@ -96,7 +100,7 @@ function Lobby:draw()
   love.graphics.setFont(app.fonts.title)
   love.graphics.setColor(1, 1, 1)
   love.graphics.print("Players  " .. #session.members .. " / " .. session.MAX_PLAYERS, lx + 24, ly + 18)
-  local me = steam.myId()
+  local me = session.myId()
   for i = 1, session.MAX_PLAYERS do
     local m = session.members[i]
     local ry = ly + 70 + (i - 1) * 74
@@ -125,9 +129,75 @@ function Lobby:draw()
     end
   end
 
-  -- Code + invites
   local rx, ry, rw, rh = 660, 90, 560, 380
   ui.panel(rx, ry, rw, rh)
+  if session.kind == "lan" then
+    self:drawLanInfo(session, rx, ry, rw)
+  else
+    self:drawSteamInfo(session, rx, ry, rw)
+  end
+  self:drawControls(session)
+end
+
+-- How to join a LAN game: the host's address (desktop) and browser link.
+function Lobby:drawLanInfo(session, rx, ry, rw)
+  local function copyButton(label, key, text, x, y, w)
+    if ui.button(self.copied > 0 and self.copiedKey == key and "Copied!" or label, x, y, w, 40, { font = app.fonts.small }) then
+      love.system.setClipboardText(text)
+      self.copied, self.copiedKey = 1.5, key
+    end
+  end
+  love.graphics.setFont(app.fonts.med)
+  love.graphics.setColor(1, 1, 1, 0.6)
+  love.graphics.printf(session.isHost and "Your address on this network" or "Connected to the host at", rx, ry + 16, rw, "center")
+  love.graphics.setFont(app.fonts.big)
+  love.graphics.setColor(1, 0.85, 0.4)
+  love.graphics.printf(session.code or "?", rx, ry + 44, rw, "center")
+  if not session.isHost then
+    love.graphics.setFont(app.fonts.small)
+    love.graphics.setColor(1, 1, 1, 0.45)
+    love.graphics.printf("The host's settings (rounds, cards, maps) are used for the match.", rx + 30, ry + 110, rw - 60, "center")
+    return
+  end
+
+  copyButton("Copy Address", "addr", session.code or "", rx + 150, ry + 96, rw - 300)
+  love.graphics.setFont(app.fonts.small)
+  love.graphics.setColor(1, 1, 1, 0.55)
+  love.graphics.printf("Desktop players: Online Play > LAN, then pick this game from the list or type the address.",
+    rx + 30, ry + 146, rw - 60, "center")
+
+  love.graphics.setFont(app.fonts.med)
+  love.graphics.setColor(1, 1, 1, 0.6)
+  love.graphics.printf("Browser players open", rx, ry + 200, rw, "center")
+  love.graphics.setFont(app.fonts.title)
+  if session.webDir() then
+    love.graphics.setColor(0.55, 0.85, 1)
+    love.graphics.printf(session.url or "", rx, ry + 226, rw, "center")
+    copyButton("Copy Browser Link", "url", session.url or "", rx + 150, ry + 266, rw - 300)
+    love.graphics.setFont(app.fonts.small)
+    love.graphics.setColor(1, 1, 1, 0.45)
+    love.graphics.printf("then choose Online Play > LAN > Join Game.", rx + 30, ry + 316, rw - 60, "center")
+  else
+    love.graphics.setColor(1, 0.6, 0.45, 0.8)
+    love.graphics.printf("unavailable", rx, ry + 226, rw, "center")
+    love.graphics.setFont(app.fonts.small)
+    love.graphics.setColor(1, 1, 1, 0.45)
+    love.graphics.printf("The browser version's files weren't found (the web folder next to the game, or dist/web " ..
+      "from ./build.sh web when running from source).", rx + 30, ry + 270, rw - 60, "center")
+  end
+  local others = {}
+  for i, ip in ipairs(session.ipList or {}) do
+    if i > 1 then others[#others + 1] = ip end
+  end
+  if #others > 0 then
+    love.graphics.setFont(app.fonts.tiny)
+    love.graphics.setColor(1, 1, 1, 0.35)
+    love.graphics.printf("Other addresses of this computer: " .. table.concat(others, ", "), rx + 20, ry + 352, rw - 40, "center")
+  end
+end
+
+-- Steam: lobby code, invite dialog and friends.
+function Lobby:drawSteamInfo(session, rx, ry, rw)
   love.graphics.setFont(app.fonts.med)
   love.graphics.setColor(1, 1, 1, 0.6)
   love.graphics.printf("Lobby code", rx, ry + 16, rw, "center")
@@ -164,6 +234,9 @@ function Lobby:draw()
       self.invited[f.id] = true
     end
   end
+end
+
+function Lobby:drawControls(session)
 
   -- Bottom controls
   local by = 495
@@ -191,8 +264,14 @@ function Lobby:draw()
 
   love.graphics.setFont(app.fonts.small)
   love.graphics.setColor(1, 1, 1, 0.4)
-  love.graphics.printf("Friends can join with the code, or by accepting a Steam invite while they have the game open " ..
-    "(the game runs as Spacewar, so Steam can't launch it for them).", 100, 630, app.W - 200, "center")
+  if session.kind == "lan" then
+    love.graphics.printf("Everyone plays with the Online controls (mouse aim). Players need the same game version " ..
+      "as the host. Windows may ask to let the game through its firewall: allow it on private networks.",
+      100, 630, app.W - 200, "center")
+  else
+    love.graphics.printf("Friends can join with the code, or by accepting a Steam invite while they have the game open " ..
+      "(the game runs as Spacewar, so Steam can't launch it for them).", 100, 630, app.W - 200, "center")
+  end
   if self.message then
     app.centered(self.message, app.fonts.med, 672, { 1, 0.6, 0.45 })
   end

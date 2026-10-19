@@ -59,6 +59,7 @@ local defaults = {
   roundsToWin = 5,
   pickFrom = 3,
   picksPerRound = 1,
+  playerName = "Player", -- shown to others in LAN games
 }
 for _, r in ipairs(Cards.RARITIES) do defaults["weight_" .. r.id] = r.weight end
 

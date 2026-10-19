@@ -15,7 +15,7 @@ local fx = require "gfx.fx"
 local net = require "online.net"
 local Snap = require "online.snapshot"
 local hud = require "gfx.hud"
-local session = require "online.session"
+local active = require "online.active"
 local Settings = require "core.settings"
 
 local Match = {}
@@ -60,7 +60,7 @@ function Match.newHost(slots, winScore, transport, opts)
   opts = opts or {}
   local m = newMatch("host")
   m.transport = transport
-  m.popEvents = opts.popEvents or session.popEvents
+  m.popEvents = opts.popEvents or active.get().popEvents
   m.myInput = Input.mouse(Settings.values.binds.online)
   m.mySlot = 1
   m.peers = {}
@@ -83,7 +83,7 @@ function Match.newClient(slots, mySlot, winScore, transport, hostPeer, pending, 
   opts = opts or {}
   local m = newMatch("client")
   m.transport = transport
-  m.popEvents = opts.popEvents or session.popEvents
+  m.popEvents = opts.popEvents or active.get().popEvents
   m.hostPeer = hostPeer
   m.mySlot = mySlot
   m.myInput = Input.mouse(Settings.values.binds.online)
@@ -393,7 +393,7 @@ function Match:clientNetwork()
 
   for _, ev in ipairs(self.popEvents()) do
     if ev.type == "hostLeft" then
-      session.leave()
+      active.get().leave()
       app.switch(require("screens.menu").new("The host left the game"))
       return
     end
@@ -454,7 +454,7 @@ end
 function Match:backToLobby(message)
   if self.role == "host" then
     self:broadcast(net.encodeToLobby(), true)
-    session.setJoinable(true)
+    active.get().setJoinable(true)
   end
   app.switch(require("screens.lobby").new(message))
 end
@@ -748,12 +748,12 @@ function Match:drawPause()
     if ui.button("Back to Lobby (everyone)", bx, y, bw, bh) then self:backToLobby() end
     y = y + 62
     if ui.button("Leave Lobby", bx, y, bw, bh) then
-      session.leave()
+      active.get().leave()
       app.switch(require("screens.menu").new())
     end
   else
     if ui.button("Leave Lobby", bx, y, bw, bh) then
-      session.leave()
+      active.get().leave()
       app.switch(require("screens.menu").new())
     end
   end

@@ -1,8 +1,10 @@
 -- Online session: the Steam lobby we're in, its members, joining by code or
--- invite, and the Steam P2P transport used by the match.
+-- invite, and the Steam P2P transport used by the match. online/lan.lua has the same interface
+-- for LAN play; online/active.lua says which one the lobby and match screens use.
 local steam = require "online.steam"
 
 local session = {
+  kind = "steam",
   lobby = nil,        -- lobby id (uint64 userdata)
   lobbyKey = nil,     -- tostring(lobby)
   isHost = false,
@@ -88,6 +90,10 @@ function session.init()
 end
 
 ---------------------------------------------------------------- lobby state
+function session.myId()
+  return steam.myId()
+end
+
 function session.inLobby()
   return session.lobby ~= nil
 end

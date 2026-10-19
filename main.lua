@@ -1,6 +1,7 @@
 local app = require "core.app"
 local steam = require "online.steam"
 local session = require "online.session"
+local lan = require "online.lan"
 local Settings = require "core.settings"
 local Bloom = require "gfx.bloom"
 local platform = require "core.platform"
@@ -16,6 +17,11 @@ function love.load(args)
   steam.init() -- normally already done in conf.lua; this is a no-op then
   session.init()
   session.onEntered = function()
+    require("online.active").use(session)
+    app.switch(require("screens.lobby").new())
+  end
+  lan.onEntered = function()
+    require("online.active").use(lan)
     app.switch(require("screens.lobby").new())
   end
 
@@ -31,8 +37,10 @@ function love.update(dt)
   dt = math.min(dt, 1 / 30)
   steam.update()
   session.update()
+  lan.update()
   Settings.update()
   app.update(dt)
+  lan.flush()
 end
 
 function love.draw()
@@ -120,5 +128,6 @@ end
 
 function love.quit()
   session.leave()
+  lan.leave()
   steam.shutdown()
 end

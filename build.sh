@@ -3,10 +3,12 @@
 #   dist/RoundsClone-x86_64.AppImage     Linux: one self-contained executable
 #   dist/RoundsClone-windows-x64.zip     Windows: RoundsClone.exe + DLLs, unzip and run
 #   dist/web/                            Browser version (love.js), served by GitHub Pages
+# The Linux and Windows packages also carry the browser version (web/ next to the game), which a
+# desktop LAN host serves so browsers on the network can join (online/lan.lua).
 #
 # Usage: ./build.sh [all|linux|windows|web|love]     (default: all)
 #   love = only build dist/RoundsClone.love (runs anywhere with `love RoundsClone.love`)
-#   all  = love + linux + windows, plus web when Node.js (npx) is installed
+#   all  = love + web + linux + windows (web is skipped when Node.js (npx) isn't installed)
 #
 # Needs: curl, zip, unzip (and Node.js for web). The LÖVE runtimes and appimagetool are
 # downloaded on the first build into build/cache/ (gitignored); love.js comes from npm.
@@ -72,6 +74,7 @@ build_linux() {
   # sit next to the .love, which is where steam.lua looks for them in a fused build.
   cp "$DIST/$NAME.love" "$appdir/$NAME.love"
   cp "$ROOT/lib/linux/libsteam_api.so" "$ROOT/lib/linux/luasteam.so" "$ROOT/steam_appid.txt" "$appdir/"
+  copy_web "$appdir"
   sed -i "s|^#FUSE_PATH=\"\$APPDIR/my_game.love\"|FUSE_PATH=\"\$APPDIR/$NAME.love\"|" "$appdir/AppRun"
   grep -q "^FUSE_PATH=" "$appdir/AppRun" || die "could not set FUSE_PATH in AppRun"
 
@@ -113,6 +116,7 @@ build_windows() {
   cat "$src/love.exe" "$DIST/$NAME.love" > "$out/$NAME.exe"
   cp "$src"/*.dll "$src/license.txt" "$out/"
   cp "$ROOT/lib/windows/steam_api64.dll" "$ROOT/lib/windows/luasteam.dll" "$ROOT/steam_appid.txt" "$out/"
+  copy_web "$out"
 
   rm -f "$DIST/$NAME-windows-x64.zip"
   (cd "$BUILD/windows" && zip -9 -q -r "$DIST/$NAME-windows-x64.zip" "$NAME")
@@ -133,14 +137,26 @@ build_web() {
   [ -f "$DIST/web/love.wasm" ] && [ -f "$DIST/web/game.data" ] || die "web build is incomplete"
 }
 
+# The browser version inside a desktop package (DIR/web), for LAN hosts to serve.
+copy_web() {
+  if [ -f "$DIST/web/index.html" ]; then
+    mkdir -p "$1/web"
+    cp "$DIST/web/index.html" "$DIST/web/game.js" "$DIST/web/game.data" "$DIST/web/love.js" "$DIST/web/love.wasm" "$1/web/"
+  else
+    log "No dist/web: this package's LAN host won't serve the browser version"
+  fi
+}
+
+# Web first, so the desktop packages can include it.
+maybe_web() {
+  if command -v npx >/dev/null; then build_web; else rm -rf "$DIST/web"; log "Skipping web build (Node.js not installed)"; fi
+}
+
 mkdir -p "$CACHE" "$DIST"
 case "$TARGET" in
-  all)
-    build_love; build_linux; build_windows
-    if command -v npx >/dev/null; then build_web; else log "Skipping web build (Node.js not installed)"; fi
-    ;;
-  linux) build_love; build_linux ;;
-  windows) build_love; build_windows ;;
+  all) build_love; maybe_web; build_linux; build_windows ;;
+  linux) build_love; maybe_web; build_linux ;;
+  windows) build_love; maybe_web; build_windows ;;
   web) build_love; build_web ;;
   love) build_love ;;
   *) die "unknown target '$TARGET' (use all, linux, windows, web or love)" ;;

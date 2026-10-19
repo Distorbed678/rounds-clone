@@ -4,9 +4,10 @@ A fan-made clone of [ROUNDS](https://store.steampowered.com/app/1557740/ROUNDS/)
 
 - **Local play:** 2 players on one keyboard.
 - **Online play:** up to 4 players over Steam, joining with a 6-character lobby code.
-- **Platforms:** Windows and Linux (64-bit), plus a browser version for local play.
+- **LAN play:** up to 4 players on the same network, no Steam needed. Browsers on the network can join a desktop host.
+- **Platforms:** Windows and Linux (64-bit), plus a browser version for local play and joining LAN games.
 
-**▶ Play in your browser: https://distorbed678.github.io/rounds-clone/** (local 2-player; online play needs the desktop version)
+**▶ Play in your browser: https://distorbed678.github.io/rounds-clone/** (local 2-player; Steam play needs the desktop version)
 
 > This project is not affiliated with or endorsed by Landfall Games, the makers of ROUNDS.
 
@@ -42,7 +43,7 @@ A fan-made clone of [ROUNDS](https://store.steampowered.com/app/1557740/ROUNDS/)
 
 ### Browser
 
-Open **https://distorbed678.github.io/rounds-clone/**. Nothing to install. Both players share the keyboard, settings are saved in your browser, and the **Fullscreen** button above the game gives a bigger view. Online play isn't available in the browser, because it runs over Steam.
+Open **https://distorbed678.github.io/rounds-clone/**. Nothing to install. Both players share the keyboard, settings are saved in your browser, and the **Fullscreen** button above the game gives a bigger view. Steam play isn't available in the browser. To join a LAN game from a browser, open the address the desktop host's lobby shows (see [LAN play](#lan-play)).
 
 ### Run from source
 
@@ -67,6 +68,7 @@ All controls can be rebound in **Settings → Controls**. These are the defaults
 - **Online only:** hold **S** in the air to fast-fall.
 - **Esc** opens the pause/menu screen. **F11** or **Alt+Enter** toggles fullscreen.
 - **Card picks:** use your left/right keys and your fire key (local play). Online, click a card, or use A/D with Space.
+- **LAN games use the Online controls**, the same as Steam games.
 
 ## Online play (Steam)
 
@@ -86,6 +88,21 @@ Online play runs on Steam's networking. It uses Steam's public test app, **Space
 
 Steam invites also work, but only if the friend already has the game open. The game runs as Spacewar, so Steam can't launch it for them.
 
+## LAN play
+
+**Online Play → LAN** plays with computers on the same network, without Steam or accounts. Set your name at the top of the LAN screen.
+
+1. The host presses **Host LAN Game**. The lobby shows the host's address (e.g. `192.168.1.20`) and a browser link (e.g. `http://192.168.1.20:27960`).
+2. Desktop players open **Online Play → LAN**. Games on the network appear in the list; press **Join**, or type the host's address.
+3. Browser players open the host's browser link in any browser on the network, then choose **Online Play → LAN → Join Game**. The desktop host serves the browser version itself, so this works without internet access. (The GitHub Pages site can't join LAN games: browsers don't let a page from the internet connect to computers on your network.)
+4. The host presses **Start Match** once at least 2 players are in. New players can join while the host is in the lobby.
+
+Notes:
+- The host uses TCP port **27960** (or the next free one, shown in the address), and games are found with a UDP broadcast on port **27961**. If a game doesn't show up in the list, type the address instead.
+- The first time you host, Windows may ask whether to let the game through the firewall. Allow it on **private networks**.
+- Everyone needs the **same game version** as the host.
+- Only desktop players can host. Browsers can only join.
+
 ## Building releases
 
 `build.sh` builds release packages on Linux. It needs `curl`, `zip` and `unzip`, plus [Node.js](https://nodejs.org/) for the browser version.
@@ -102,8 +119,8 @@ Output goes to `dist/`:
 
 | File | What it is |
 |---|---|
-| `RoundsClone-x86_64.AppImage` | Single-file Linux executable. LÖVE's AppImage with the game and the Steam libraries inside. |
-| `RoundsClone-windows-x64.zip` | `RoundsClone.exe` (LÖVE's `love.exe` with the game appended), LÖVE's DLLs and the Steam DLLs. |
+| `RoundsClone-x86_64.AppImage` | Single-file Linux executable. LÖVE's AppImage with the game, the Steam libraries and the browser version (served to browsers by a LAN host). |
+| `RoundsClone-windows-x64.zip` | `RoundsClone.exe` (LÖVE's `love.exe` with the game appended), LÖVE's DLLs, the Steam DLLs and `web/` (the browser version, served to browsers by a LAN host). |
 | `RoundsClone.love` | The game files only. Runs anywhere with `love RoundsClone.love`, but without Steam libraries. |
 | `web/` | The browser version: [love.js](https://github.com/Davidobot/love.js) (LÖVE compiled to WebAssembly) with the game, using the page in `web/index.html`. Serve the folder over HTTP to test it locally, e.g. `python3 -m http.server -d dist/web`. |
 
@@ -121,8 +138,9 @@ rounds-clone/
 ├── core/                app (screen stack, virtual canvas), ui, input, settings
 ├── game/                world (authoritative simulation), player, bullet, cards, map
 ├── gfx/                 fx (particles), bloom, hud
-├── online/              net (message codec), snapshot, session (Steam lobby), steam (library loader)
-├── screens/             menu, settings, cards (card pool editor), maps (map pool editor), online, lobby, match
+├── online/              net (message codec), snapshot, session (Steam lobby), steam (library loader),
+│                        lan (LAN host/client/discovery), webbridge (browser LAN), active (current session)
+├── screens/             menu, settings, cards (card pool editor), maps (map pool editor), online, lan, lobby, match
 ├── lib/
 │   ├── windows/         steam_api64.dll, luasteam.dll
 │   └── linux/           libsteam_api.so, luasteam.so
@@ -142,7 +160,8 @@ rounds-clone/
 - **Snapshots** go out about 30 times a second. They are compact binary (`love.data.pack`), lz4-compressed when large, and include particle and screen-shake events so effects look the same everywhere.
 - **Reliable messages** cover match start, roster/cards, toasts, return-to-lobby and the gameplay **rules** (cards offered, picks per round, rarity weights, per-card overrides). The host sends the rules at match start and again on New Match.
 - **Card picks:** the current pick (picker, hand, hover, queue) travels in every snapshot. The picker's hover rides along with their input, and their choice is tagged with a serial number so a late or duplicate click can't take the wrong card.
-- **Versioning:** `session.PROTOCOL` is stored in the lobby data, and mismatched peers are refused.
+- **Versioning:** `session.PROTOCOL` is stored in the lobby data (and sent in the LAN hello), and mismatched peers are refused.
+- **Transports:** Steam uses NetworkingMessages. LAN uses one TCP connection per client to the host (`online/lan.lua`): desktop clients send length-prefixed frames, and browser clients use a WebSocket on the same port, which also serves the browser version over HTTP. In the browser, `online/webbridge.lua` talks to the page's WebSocket code through `print` and a file in the in-memory filesystem, since love.js has no sockets.
 
 ### Steam libraries
 
